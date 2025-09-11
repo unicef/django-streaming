@@ -30,7 +30,7 @@ class Backend(BaseBackend):
         self.channel = self._get_channel()
 
     def _get_channel(self) -> "BlockingChannel | None":
-        for i in range(CONFIG.RETRY_COUNT):
+        for __ in range(CONFIG.RETRY_COUNT):
             try:
                 connection = pika.BlockingConnection(pika.ConnectionParameters(host=self.host, port=self.port))
                 channel = connection.channel()

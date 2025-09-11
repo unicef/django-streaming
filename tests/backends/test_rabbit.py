@@ -17,9 +17,8 @@ def test_publish(backend: RabbitBackend) -> None:
 
 
 def test_error(settings) -> None:
-    settings.STREAMING = {"BROKER_URL": "rabbit://localhost:1111?queue=test",
-                          "RETRY_COUNT": 1,
-                          "RETRY_DELAY": 0.1}
+    settings.STREAMING = {"BROKER_URL": "rabbit://localhost:1111?queue=test", "RETRY_COUNT": 1, "RETRY_DELAY": 0.1}
     from streaming.config import CONFIG
+
     with pytest.raises(StreamingBackendError):
         RabbitBackend(CONFIG.BROKER_URL)
