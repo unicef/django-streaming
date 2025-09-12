@@ -8,6 +8,8 @@ import click
 from pika.adapters.blocking_connection import BlockingChannel
 from pika.spec import Basic, BasicProperties
 
+from streaming.utils import make_event
+
 if TYPE_CHECKING:
     from streaming.types import EventType
 
@@ -97,7 +99,7 @@ def send(message: str, domain: str) -> None:
     from streaming.backends.rabbitmq import RabbitMQBackend
     from streaming.manager import initialize_engine
 
-    manager = initialize_engine()
+    manager = initialize_engine(True)
 
     backend = manager.backend
     if not isinstance(backend, RabbitMQBackend):
@@ -114,7 +116,7 @@ def send(message: str, domain: str) -> None:
             "timestamp": timestamp,
             "message": message,
         }
-    msg: EventType = {"event": "Test", "domain": domain, "payload": payload}
+    msg: EventType = make_event(payload, event="Test", domain=domain)
     backend.publish(msg)
     click.secho(f"Server: {backend.host}:{backend.port}")
     click.secho(f"Sent: {msg}")
@@ -128,15 +130,15 @@ def listen(name: str, domain: str) -> None:
     from streaming.backends.rabbitmq import RabbitMQBackend
     from streaming.manager import initialize_engine
 
-    manager = initialize_engine()
-
+    manager = initialize_engine(True)
     backend = manager.backend
+
     if not isinstance(backend, RabbitMQBackend):
         raise click.ClickException("RabbitMQ backend is not configured. Please set BROKER_URL to a rabbit:// URL.")
 
     if not name:
         name = random.choice(names)  # noqa S311
-    if backend.channel is None:
+    if name != backend.connection_name:
         backend.connection_name = name
         backend.connect()
 

@@ -26,4 +26,8 @@ def get_backend() -> "BaseBackend":
         from .rabbitmq import RabbitMQBackend
 
         return RabbitMQBackend(CONFIG.BROKER_URL)
+    if parsed_url.scheme == "debug":
+        from .debug import DebugBackend
+
+        return DebugBackend(CONFIG.BROKER_URL)
     raise StreamingConfigError(f"Broker not supported: {parsed_url.scheme}")

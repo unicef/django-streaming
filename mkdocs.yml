@@ -93,6 +93,7 @@ nav:
     - Installation: installation.md
     - Usage: usage.md
     - Configuration: configuration.md
+    - CLI: cli.md
     - Backends:
         - Console Backend: backends/console.md
         - Debug Backend: backends/debug.md

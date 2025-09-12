@@ -1,4 +1,6 @@
 import logging
+from unittest import mock
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -19,6 +21,17 @@ def backend(settings) -> RabbitMQBackend:
 
 def test_publish(backend: RabbitMQBackend) -> None:
     backend.publish(make_event("Hello World"))
+    backend.publish(make_event("Hello World"))
+    with mock.patch("pika.adapters.blocking_connection.BlockingChannel.basic_publish") as m:
+        m.side_effect = Exception
+        with pytest.raises(StreamingBackendError):
+            backend.publish(make_event("Hello World"))
+
+
+def test_close(backend: RabbitMQBackend) -> None:
+    backend.connect()
+    backend.close()
+    backend.close()
 
 
 def test_error(settings) -> None:
@@ -33,3 +46,17 @@ def test_error(settings) -> None:
 
     with pytest.raises(StreamingBackendError):
         b.connect()
+
+
+def test_connect(backend) -> None:
+    backend.connect()
+    backend.connect()
+
+
+def test_listen(backend) -> None:
+    with mock.patch("pika.adapters.blocking_connection.BlockingChannel.start_consuming"):
+        backend.listen(["abc"], MagicMock)
+
+    backend.connect()
+    with mock.patch("pika.adapters.blocking_connection.BlockingChannel.start_consuming"):
+        backend.listen(["abc"], MagicMock)

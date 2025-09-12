@@ -17,6 +17,10 @@ STREAMING = {
 -   `localhost:6379`: Default Redis host and port.
 -   `0`: The Redis database number to use.
 
+## Connection Reliability
+
+The Redis backend includes a retry mechanism for establishing and re-establishing connections. If the initial connection fails or an existing connection is lost, the backend will attempt to reconnect multiple times with a delay between attempts. These behaviors are controlled by the `RETRY_COUNT` and `RETRY_DELAY` settings in your `STREAMING` configuration.
+
 ## Usage
 
 Once configured, you can publish messages using the `manager.publish()` method. These messages will be pushed to a Redis list.

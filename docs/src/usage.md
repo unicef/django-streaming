@@ -22,6 +22,20 @@ from streaming.manager import manager
 manager.publish("Your message here!")
 ```
 
+## Using the Threaded Change Manager
+
+For applications where blocking the main thread for message publishing is undesirable (e.g., web applications), `django-streaming` provides a `ThreadedChangeManager`. This manager publishes messages asynchronously in a separate thread.
+
+To enable the threaded manager, set the `MANAGER_CLASS` in your `settings.py`:
+
+```python
+STREAMING = {
+    "MANAGER_CLASS": "streaming.threaded.ThreadedChangeManager"
+}
+```
+
+When using the `ThreadedChangeManager`, messages are queued and processed in a background thread. The manager handles graceful shutdown on process termination, attempting to empty the queue within a timeout.
+
 ## Available Backends
 
 `hope-streaming` supports various backends, including:

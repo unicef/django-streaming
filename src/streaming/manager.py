@@ -41,9 +41,9 @@ def get_manager() -> ChangeManager:
     return import_string(CONFIG.MANAGER_CLASS)()  # type: ignore[no-any-return]
 
 
-def initialize_engine() -> ChangeManager:
+def initialize_engine(reset: bool = False) -> ChangeManager:
     global manager  # noqa: PLW0603
-    if manager is None:
+    if manager is None or reset:
         manager = get_manager()
         manager.initialize()
     return manager

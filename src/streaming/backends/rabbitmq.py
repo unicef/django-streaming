@@ -3,7 +3,7 @@ import json
 import logging
 import socket
 import time
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import pika.channel
 import pika.exceptions
@@ -16,6 +16,7 @@ from ._base import BaseBackend
 
 if TYPE_CHECKING:
     from pika.adapters.blocking_connection import BlockingChannel
+    from pika.spec import Basic, BasicProperties
 
     from streaming.types import EventType, PikaCallback
 
@@ -39,10 +40,8 @@ class RabbitMQBackend(BaseBackend):
         atexit.register(self.close)
 
     def connect(self) -> None:
-        if self.connection:
-            self.connection.close()
-            self.connection = None
-            self.channel = None
+        if self.connection and self.connection.is_open:
+            self.close()
 
         for __ in range(CONFIG.RETRY_COUNT):
             try:
@@ -73,42 +72,44 @@ class RabbitMQBackend(BaseBackend):
         raise StreamingBackendError("Could not connect to RabbitMQ after multiple retries.")
 
     def listen(self, domains: list[str], callback: "PikaCallback") -> None:
-        def _callback(ch: Any, method: Any, properties: Any, body: bytes) -> None:
+        def _callback(
+            ch: "BlockingChannel", method: "Basic.Deliver", properties: "BasicProperties", body: bytes
+        ) -> None:
             callback(ch, method, properties, body)
-            ch.basic_ack(delivery_tag=method.delivery_tag)
+            ch.basic_ack(delivery_tag=method.delivery_tag)  # type: ignore[arg-type]
 
         if self.channel is None:
             self.connect()
 
-        if self.channel:
-            for domain in domains:
-                queue_name = f"{self.connection_name}_sub_to_{domain}"
-                self.channel.queue_declare(queue=queue_name, durable=True)
-                self.channel.queue_bind(exchange=self.exchange, queue=queue_name, routing_key=domain)
-                self.channel.basic_consume(queue=queue_name, on_message_callback=_callback, auto_ack=False)
-            self.channel.start_consuming()
+        for domain in domains:
+            queue_name = f"{self.connection_name}_sub_to_{domain}"
+            self.channel.queue_declare(queue=queue_name, durable=True)  # type: ignore[union-attr]
+            self.channel.queue_bind(exchange=self.exchange, queue=queue_name, routing_key=domain)  # type: ignore[union-attr]
+            self.channel.basic_consume(queue=queue_name, on_message_callback=_callback, auto_ack=False)  # type: ignore[union-attr]
+        self.channel.start_consuming()  # type: ignore[union-attr]
 
     def publish(self, message: "EventType") -> None:
         if not self.channel or self.channel.is_closed:
             self.connect()
 
-        if self.channel:
-            try:
-                self.channel.basic_publish(
-                    exchange=self.exchange,
-                    routing_key=message["domain"],
-                    body=json.dumps(message).encode(),
-                    properties=pika.BasicProperties(
-                        delivery_mode=pika.spec.PERSISTENT_DELIVERY_MODE,
-                        expiration="86400000",  # Scadenza in millisecondi (24 * 60 * 60 * 1000)
-                    ),
-                )
-            except Exception as e:
-                raise StreamingBackendError(
-                    "RabbitMQ connection not available after reconnect. Message not published."
-                ) from e
+        try:
+            self.channel.basic_publish(  # type: ignore[union-attr]
+                exchange=self.exchange,
+                routing_key=message["domain"],
+                body=json.dumps(message).encode(),
+                properties=pika.BasicProperties(
+                    delivery_mode=pika.spec.PERSISTENT_DELIVERY_MODE,
+                    expiration="86400000",  # Scadenza in millisecondi (24 * 60 * 60 * 1000)
+                ),
+            )
+        except Exception as e:
+            raise StreamingBackendError(
+                "RabbitMQ connection not available after reconnect. Message not published."
+            ) from e
 
     def close(self) -> None:
         if self.connection and self.connection.is_open:
             logger.info("Closing RabbitMQ connection.")
             self.connection.close()
+            self.connection = None
+            self.channel = None

@@ -20,6 +20,7 @@ exclude_lines =
     if settings.DEBUG:
     if TYPE_CHECKING
     raise NotImplementedError
+    pass
 
 ignore_errors = True
 
