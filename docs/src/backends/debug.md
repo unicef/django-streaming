@@ -18,13 +18,13 @@ Messages published to the Debug Backend can be retrieved from the `debug_backend
 
 ```python
 from streaming.manager import manager
-from streaming.backends.debug import Backend as DebugBackend
+from streaming.backends.debug import DebugBackend as DebugBackend
 
 # Assuming the Debug Backend is configured and active
 manager.publish("First debug message")
 manager.publish("Second debug message")
 
-debug_backend = manager.get_backend() # This assumes you have a way to get the active backend instance
+debug_backend = manager.get_backend()  # This assumes you have a way to get the active backend instance
 
 if isinstance(debug_backend, DebugBackend):
     print(debug_backend.messages)

@@ -1,5 +1,9 @@
+import logging
+
 from django.contrib.auth import get_user_model
 from django.contrib.auth.backends import ModelBackend
+
+logger = logging.getLogger(__name__)
 
 
 class AnyUserBackend(ModelBackend):

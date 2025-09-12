@@ -1,7 +1,11 @@
+import logging
+
 import pytest
 
 from streaming.backends import get_backend
 from streaming.exceptions import StreamingConfigError
+
+logger = logging.getLogger(__name__)
 
 
 @pytest.fixture(params=["console://", "redis://localhost:6379/0", "rabbit://localhost:5672"])

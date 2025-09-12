@@ -34,6 +34,7 @@ dynamic = [
   "version",
 ]
 dependencies = [
+  "click>=8",
   "django>=4",
   "django-stubs-ext",
   "markdown>=3.8.2",
@@ -48,6 +49,8 @@ optional-dependencies.redis = [
 ]
 urls.Documentation = "https://github.com/UNICEF/django-streaming"
 urls.Homepage = "https://github.com/UNICEF/django-streaming"
+
+scripts.stream = "streaming.__cli__:cli"
 
 [dependency-groups]
 dev = [

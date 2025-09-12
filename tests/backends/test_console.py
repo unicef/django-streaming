@@ -1,7 +1,11 @@
+import logging
+
 import pytest
 
-from streaming.backends.console import Backend as ConsoleBackend
+from streaming.backends.console import ConsoleBackend
 from streaming.config import CONFIG
+
+logger = logging.getLogger(__name__)
 
 
 @pytest.fixture

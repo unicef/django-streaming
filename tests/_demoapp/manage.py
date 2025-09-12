@@ -1,7 +1,10 @@
 #!/usr/bin/env python
+import logging
 import os
 import sys
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 if __name__ == "__main__":
     here = Path(__file__).parent

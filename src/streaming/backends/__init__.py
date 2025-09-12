@@ -1,10 +1,13 @@
+import logging
 from typing import TYPE_CHECKING
 from urllib.parse import urlparse
+
+from streaming.exceptions import StreamingConfigError
 
 if TYPE_CHECKING:
     from ._base import BaseBackend
 
-from streaming.exceptions import StreamingConfigError
+logger = logging.getLogger(__name__)
 
 
 def get_backend() -> "BaseBackend":
@@ -12,24 +15,15 @@ def get_backend() -> "BaseBackend":
 
     parsed_url = urlparse(CONFIG.BROKER_URL)
     if parsed_url.scheme == "console":
-        from .console import Backend as ConsoleBackend
+        from .console import ConsoleBackend
 
         return ConsoleBackend(CONFIG.BROKER_URL)
     if parsed_url.scheme == "redis":
-        from .redis import Backend as RedisBackend
+        from .redis import RedisBackend
 
         return RedisBackend(CONFIG.BROKER_URL)
     if parsed_url.scheme == "rabbit":
-        from .rabbitmq import Backend as RabbitBackend
+        from .rabbitmq import RabbitMQBackend
 
-        return RabbitBackend(CONFIG.BROKER_URL)
+        return RabbitMQBackend(CONFIG.BROKER_URL)
     raise StreamingConfigError(f"Broker not supported: {parsed_url.scheme}")
-
-
-def initialize_engine() -> None:
-    global backend  # noqa: PLW0603
-    backend = get_backend()
-    backend.initialize()
-
-
-backend: "BaseBackend | None" = None

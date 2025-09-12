@@ -1,6 +1,9 @@
+import logging
 from pathlib import Path
 
 from django.apps import AppConfig
+
+logger = logging.getLogger(__name__)
 
 
 class StreamingConfig(AppConfig):
@@ -9,6 +12,6 @@ class StreamingConfig(AppConfig):
     path = str(Path(__file__).parent)
 
     def ready(self) -> None:
-        from streaming.backends import initialize_engine
+        from .manager import initialize_engine
 
         initialize_engine()

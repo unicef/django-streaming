@@ -1,6 +1,10 @@
+import logging
+
 import pytest
 
 from streaming.config import StreamingConfig
+
+logger = logging.getLogger(__name__)
 
 
 def test_issues_config_overrides(settings):

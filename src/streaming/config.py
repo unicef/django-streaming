@@ -1,9 +1,12 @@
+import logging
 from collections import ChainMap
 from typing import Any
 
 from django.conf import settings
 from django.core.signals import setting_changed
 from django.dispatch import receiver
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_QUEUE_NAME = "django_model_changes"
 
@@ -13,6 +16,7 @@ class StreamingConfig:
         "BROKER_URL": "redis://localhost:6379/0?queue=hope_changes",
         "RETRY_COUNT": 3,
         "RETRY_DELAY": 5,
+        "MANAGER_CLASS": "streaming.manager.ChangeManager",
     }
 
     def __init__(self) -> None:

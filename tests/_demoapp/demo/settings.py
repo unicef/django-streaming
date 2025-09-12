@@ -1,7 +1,10 @@
+import logging
 import os
 from pathlib import Path
 
 here = Path(__file__).parent
+
+logger = logging.getLogger(__name__)
 
 ALLOWED_HOSTS = ["*"]
 DEBUG = True

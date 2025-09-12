@@ -1,7 +1,11 @@
+import logging
+
 import pytest
 
-from streaming.backends.redis import Backend as RedisBackend
+from streaming.backends.redis import RedisBackend
 from streaming.exceptions import StreamingBackendError
+
+logger = logging.getLogger(__name__)
 
 
 @pytest.fixture
@@ -17,7 +21,11 @@ def test_publish(backend: RedisBackend) -> None:
 
 
 def test_error(settings) -> None:
-    settings.STREAMING = {"BROKER_URL": "redis://localhost:1111?queue=test", "RETRY_COUNT": 1, "RETRY_DELAY": 0.1}
+    settings.STREAMING = {
+        "BROKER_URL": "redis://localhost:1111?queue=test&timeout=0.01",
+        "RETRY_COUNT": 1,
+        "RETRY_DELAY": 0.1,
+    }
     from streaming.config import CONFIG
 
     with pytest.raises(StreamingBackendError):
