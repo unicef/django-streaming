@@ -11,19 +11,19 @@ The CLI is installed automatically when you install `django-streaming`. You can 
 To see the available commands, run:
 
 ```bash
-streaming --help
+stream --help
 ```
 
 ## RabbitMQ Commands
 
 The `rabbit` group provides commands for interacting with RabbitMQ.
 
-### `streaming rabbit send`
+### `stream rabbit send`
 
 Sends a message to a RabbitMQ exchange.
 
 ```bash
-streaming rabbit send --help
+stream rabbit send --help
 ```
 
 **Options:**
@@ -34,7 +34,7 @@ streaming rabbit send --help
 **Example:**
 
 ```bash
-streaming rabbit send --message "Hello from CLI!" --domain "my-app"
+stream rabbit send --message "Hello from CLI!" --domain "my-app"
 ```
 
 ### `streaming rabbit listen`
@@ -42,7 +42,7 @@ streaming rabbit send --message "Hello from CLI!" --domain "my-app"
 Listens for messages from a RabbitMQ queue.
 
 ```bash
-streaming rabbit listen --help
+stream rabbit listen --help
 ```
 
 **Options:**
@@ -53,5 +53,5 @@ streaming rabbit listen --help
 **Example:**
 
 ```bash
-streaming rabbit listen --name "my-consumer" --domain "my-app"
+stream rabbit listen --name "my-consumer" --domain "my-app"
 ```
