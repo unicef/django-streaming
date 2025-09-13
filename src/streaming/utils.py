@@ -3,6 +3,10 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from streaming.types import JSON, EventType
 
+MINUTE = 60
+HOUR = MINUTE * 60
+DAY = HOUR * 24
+
 
 def parse_bool(value: Any) -> bool:
     if isinstance(value, str):

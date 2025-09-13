@@ -10,8 +10,8 @@ import pika.exceptions
 from pika.exchange_type import ExchangeType
 
 from streaming.config import CONFIG
-from streaming.exceptions import StreamingBackendError
 
+from ..utils import DAY
 from ._base import BaseBackend
 
 if TYPE_CHECKING:
@@ -73,7 +73,7 @@ class RabbitMQBackend(BaseBackend):
                     f"Could not connect to RabbitMQ. Retrying in {CONFIG.RETRY_DELAY} seconds...",
                 )
                 time.sleep(CONFIG.RETRY_DELAY)
-        raise StreamingBackendError("Could not connect to RabbitMQ after multiple retries.")
+        logger.critical("Could not connect to RabbitMQ after multiple retries.")
 
     def listen(self, domains: list[str], callback: "PikaCallback") -> None:
         def _callback(
@@ -95,22 +95,22 @@ class RabbitMQBackend(BaseBackend):
     def publish(self, message: "EventType") -> None:
         if not self.channel or self.channel.is_closed:
             self.connect()
-
-        logger.debug("publish to %s %s", self.exchange, message["domain"])
-        try:
-            self.channel.basic_publish(  # type: ignore[union-attr]
-                exchange=self.exchange,
-                routing_key=message["domain"] or self.routing_key,
-                body=json.dumps(message).encode(),
-                properties=pika.BasicProperties(
-                    delivery_mode=pika.spec.PERSISTENT_DELIVERY_MODE,
-                    expiration="86400000",  # Scadenza in millisecondi (24 * 60 * 60 * 1000)
-                ),
-            )
-        except Exception as e:
-            raise StreamingBackendError(
-                "RabbitMQ connection not available after reconnect. Message not published."
-            ) from e
+        if self.channel:
+            logger.debug("publish to %s %s", self.exchange, message["domain"])
+            try:
+                self.channel.basic_publish(
+                    exchange=self.exchange,
+                    routing_key=message["domain"] or self.routing_key,
+                    body=json.dumps(message).encode(),
+                    properties=pika.BasicProperties(
+                        delivery_mode=pika.spec.PERSISTENT_DELIVERY_MODE,
+                        expiration=str(DAY * 2 * 1000),  # milliseconds
+                    ),
+                )
+            except Exception as e:  # noqa: BLE001
+                logger.critical("Unhandled error sending to RabbitMQ. Message not published.", exc_info=e)
+        else:
+            logger.critical("RabbitMQ connection not available after reconnect. Message not published.")
 
     def close(self) -> None:
         if self.connection and self.connection.is_open:

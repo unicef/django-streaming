@@ -5,7 +5,6 @@ from unittest.mock import MagicMock
 import pytest
 
 from streaming.backends.rabbitmq import RabbitMQBackend
-from streaming.exceptions import StreamingBackendError
 from streaming.utils import make_event
 
 logger = logging.getLogger(__name__)
@@ -19,13 +18,21 @@ def backend(settings) -> RabbitMQBackend:
     return RabbitMQBackend(CONFIG.BROKER_URL)
 
 
-def test_publish(backend: RabbitMQBackend) -> None:
-    backend.publish(make_event("Hello World"))
+def test_publish_error(backend: RabbitMQBackend, caplog) -> None:
     backend.publish(make_event("Hello World"))
     with mock.patch("pika.adapters.blocking_connection.BlockingChannel.basic_publish") as m:
         m.side_effect = Exception
-        with pytest.raises(StreamingBackendError):
+        with caplog.at_level(logging.WARNING):
             backend.publish(make_event("Hello World"))
+            assert "Unhandled error sending to RabbitMQ. Message not published." in caplog.text
+
+
+def test_publish_no_connection(backend: RabbitMQBackend, caplog) -> None:
+    with mock.patch.object(backend, "connect") as m:
+        m.return_value = None
+        with caplog.at_level(logging.WARNING):
+            backend.publish(make_event("Hello World"))
+            assert "RabbitMQ connection not available after reconnect" in caplog.text
 
 
 def test_close(backend: RabbitMQBackend) -> None:
@@ -34,7 +41,7 @@ def test_close(backend: RabbitMQBackend) -> None:
     backend.close()
 
 
-def test_error(settings) -> None:
+def test_error(settings, caplog) -> None:
     settings.STREAMING = {
         "BROKER_URL": "rabbit://localhost:1111?queue=test&timeout=0.01",
         "RETRY_COUNT": 1,
@@ -44,8 +51,9 @@ def test_error(settings) -> None:
 
     b = RabbitMQBackend(CONFIG.BROKER_URL)
 
-    with pytest.raises(StreamingBackendError):
+    with caplog.at_level(logging.WARNING):
         b.connect()
+        assert "Could not connect to RabbitMQ after multiple retries." in caplog.text
 
 
 def test_connect(backend) -> None:

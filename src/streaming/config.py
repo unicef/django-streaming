@@ -15,9 +15,8 @@ class StreamingConfig:
     _DEFAULTS = {
         "BROKER_URL": "redis://localhost:6379/0?queue=hope_changes",
         "RETRY_COUNT": 3,
-        "RETRY_DELAY": 5,
+        "RETRY_DELAY": 1,
         "MANAGER_CLASS": "streaming.manager.ChangeManager",
-        "DEBUG": False,
     }
 
     def __init__(self) -> None:

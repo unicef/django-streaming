@@ -31,7 +31,6 @@ def test_notify(manager: ChangeManager):
 
 def test_lifecycle(manager: ChangeManager):
     manager.register(User)
-    manager.initialize()
     with mock.patch.object(manager, "notify") as m:
         User.objects.create(username="test")
         assert m.called
