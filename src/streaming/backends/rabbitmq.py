@@ -33,6 +33,7 @@ class RabbitMQBackend(BaseBackend):
         self.connection_name = self._options.get("connection_name", "")
         self.timeout = float(self._options.get("timeout", 0.5))
         self.routing_key = self._options.get("routing_key", "")
+        self.virtual_host = self._options.get("virtual_host", "/")
 
         self.connection: pika.BlockingConnection | None = None
         self.channel: BlockingChannel | None = None
@@ -40,6 +41,7 @@ class RabbitMQBackend(BaseBackend):
         atexit.register(self.close)
 
     def connect(self) -> None:
+        logger.debug("Connecting to %s:%s", self.host, self.port)
         if self.connection and self.connection.is_open:
             self.close()
 
@@ -49,6 +51,7 @@ class RabbitMQBackend(BaseBackend):
                     pika.ConnectionParameters(
                         host=self.host,
                         port=self.port,
+                        virtual_host=self.virtual_host,
                         socket_timeout=self.timeout,
                         blocked_connection_timeout=self.timeout,
                         stack_timeout=self.timeout,
@@ -61,8 +64,9 @@ class RabbitMQBackend(BaseBackend):
                     )
                 )
                 self.channel = self.connection.channel()
-                self.channel.exchange_declare(exchange=self.exchange, exchange_type=ExchangeType.direct, durable=True)
-
+                self.channel.exchange_declare(exchange=self.exchange, exchange_type=ExchangeType.topic, durable=True)
+                self.channel.queue_declare(queue="global_queue", durable=True)
+                self.channel.queue_bind(exchange=self.exchange, queue="global_queue", routing_key="#")
                 return
             except (socket.gaierror, pika.exceptions.AMQPConnectionError):
                 logger.warning(
@@ -82,7 +86,7 @@ class RabbitMQBackend(BaseBackend):
             self.connect()
 
         for domain in domains:
-            queue_name = f"{self.connection_name}_sub_to_{domain}"
+            queue_name = f"{self.connection_name.lower()}_sub_to_{domain}"
             self.channel.queue_declare(queue=queue_name, durable=True)  # type: ignore[union-attr]
             self.channel.queue_bind(exchange=self.exchange, queue=queue_name, routing_key=domain)  # type: ignore[union-attr]
             self.channel.basic_consume(queue=queue_name, on_message_callback=_callback, auto_ack=False)  # type: ignore[union-attr]
@@ -92,10 +96,11 @@ class RabbitMQBackend(BaseBackend):
         if not self.channel or self.channel.is_closed:
             self.connect()
 
+        logger.debug("publish to %s %s", self.exchange, message["domain"])
         try:
             self.channel.basic_publish(  # type: ignore[union-attr]
                 exchange=self.exchange,
-                routing_key=message["domain"],
+                routing_key=message["domain"] or self.routing_key,
                 body=json.dumps(message).encode(),
                 properties=pika.BasicProperties(
                     delivery_mode=pika.spec.PERSISTENT_DELIVERY_MODE,
@@ -109,7 +114,7 @@ class RabbitMQBackend(BaseBackend):
 
     def close(self) -> None:
         if self.connection and self.connection.is_open:
-            logger.info("Closing RabbitMQ connection.")
+            logger.debug("Closing RabbitMQ connection.")
             self.connection.close()
             self.connection = None
             self.channel = None

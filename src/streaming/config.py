@@ -17,6 +17,7 @@ class StreamingConfig:
         "RETRY_COUNT": 3,
         "RETRY_DELAY": 5,
         "MANAGER_CLASS": "streaming.manager.ChangeManager",
+        "DEBUG": False,
     }
 
     def __init__(self) -> None:

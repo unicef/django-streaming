@@ -119,6 +119,7 @@ def send(message: str, domain: str) -> None:
     msg: EventType = make_event(payload, event="Test", domain=domain)
     backend.publish(msg)
     click.secho(f"Server: {backend.host}:{backend.port}")
+    click.secho(f"Publish to: {backend.exchange} {domain}")
     click.secho(f"Sent: {msg}")
     backend.connection.close()  # type: ignore[union-attr]
 
@@ -143,10 +144,16 @@ def listen(name: str, domain: str) -> None:
         backend.connect()
 
     click.secho(f"Server: {backend.host}:{backend.port}")
-    click.secho(f"Listener: {name}")
-    click.secho(f"Domains: {domain}")
+    click.secho(f"Consumer: {name}")
+    click.secho(f"Listen on: {backend.exchange} {domain}")
 
     def callback(ch: BlockingChannel, method: Basic.Deliver, properties: BasicProperties, body: bytes) -> None:
         click.echo(f"Received {body.decode()}")
 
-    backend.listen([domain], callback)
+    try:
+        backend.listen([domain], callback)
+    except KeyboardInterrupt:
+        click.secho("\nStopping listener.", fg="yellow")
+    finally:
+        if backend.connection and backend.connection.is_open:
+            backend.connection.close()

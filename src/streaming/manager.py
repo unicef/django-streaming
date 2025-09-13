@@ -13,6 +13,8 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+not_provided = object()
+
 
 class ChangeManager:
     def __init__(self) -> None:
@@ -20,20 +22,20 @@ class ChangeManager:
         self.backend = get_backend()
 
     def register(self, model: type[Model]) -> None:
+        logger.debug("Registering %s", model)
         self._registry.add(model)
+        post_save.connect(self._post_save_receiver, sender=model)
 
     def _post_save_receiver(self, sender: type[Model], instance: Model, created: bool, **kwargs: Any) -> None:
+        logger.debug("post_save event for %s", sender)
         payload = {"model": sender.__name__, "pk": instance.pk, "created": created, "fields": {}}
         for field in sender._meta.fields:
             payload["fields"][field.name] = str(getattr(instance, field.name))
-        message: EventType = {"event": "post_save", "domain": sender.__name__, "payload": payload}
+        message: EventType = {"event": "post_save", "domain": sender._meta.app_label, "payload": payload}
         self.notify(message)
 
-    def initialize(self) -> None:
-        for model in self._registry:
-            post_save.connect(self._post_save_receiver, sender=model)
-
     def notify(self, event: "EventType") -> None:
+        logger.debug("notifying  %s", event)
         self.backend.publish(event)
 
 
@@ -45,7 +47,6 @@ def initialize_engine(reset: bool = False) -> ChangeManager:
     global manager  # noqa: PLW0603
     if manager is None or reset:
         manager = get_manager()
-        manager.initialize()
     return manager
 
 
