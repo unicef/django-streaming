@@ -19,10 +19,10 @@ def backend(settings) -> RabbitMQBackend:
 
 
 def test_publish_error(backend: RabbitMQBackend, caplog) -> None:
-    backend.publish(make_event("Hello World"))
-    with mock.patch("pika.adapters.blocking_connection.BlockingChannel.basic_publish") as m:
+    backend.connect()
+    with mock.patch.object(backend.channel, "basic_publish") as m:
         m.side_effect = Exception
-        with caplog.at_level(logging.WARNING):
+        with caplog.at_level(logging.CRITICAL):
             backend.publish(make_event("Hello World"))
             assert "Unhandled error sending to RabbitMQ. Message not published." in caplog.text
 

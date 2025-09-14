@@ -64,22 +64,32 @@ INSTALLED_APPS = (
 )
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
-STREAMING = {"BROKER_URL": os.environ.get("BROKER_URL", "console://"), "DEBUG": True}
+STREAMING = {
+    "BROKER_URL": os.environ.get("BROKER_URL", "console://"),
+    "MANAGER_CLASS": "streaming.manager.ChangeManager",
+    "DEBUG": True,
+}
+LOGGING = {}
 
 # LOGGING = {
 #     "version": 1,
 #     "disable_existing_loggers": False,
 #     "formatters": {
-#         "verbose": {
-#             "format": "{levelname} {asctime} {module} {process:d} {thread:d} {message}",
-#             "style": "{",
-#         },
+#         # "verbose": {
+#         #     "format": "{levelname} {asctime} {module} {process:d} {thread:d} {message}",
+#         #     "style": "{",
+#         # },
 #         "simple": {
 #             "format": "{levelname} {message}",
 #             "style": "{",
 #         },
 #     },
 #     "handlers": {
+#         "null": {
+#             "level": "DEBUG",
+#             "class": "logging.NullHandler",
+#             "formatter": "simple",
+#         },
 #         "console": {
 #             "level": "DEBUG",
 #             "class": "logging.StreamHandler",
@@ -87,11 +97,11 @@ STREAMING = {"BROKER_URL": os.environ.get("BROKER_URL", "console://"), "DEBUG": 
 #         },
 #     },
 #     "loggers": {
-#         "django": {
-#             "handlers": ["console"],
-#             "level": "INFO",
-#             "propagate": False,
-#         },
+#         # "django": {
+#         #     "handlers": ["console"],
+#         #     "level": "INFO",
+#         #     "propagate": False,
+#         # },
 #         "streaming": {
 #             "handlers": ["console"],
 #             "level": "DEBUG",
@@ -99,7 +109,7 @@ STREAMING = {"BROKER_URL": os.environ.get("BROKER_URL", "console://"), "DEBUG": 
 #         },
 #     },
 #     "root": {
-#         "handlers": ["console"],
-#         "level": "WARNING",
+#         "handlers": ["null"],
+#         "level": "CRITICAL",
 #     },
 # }

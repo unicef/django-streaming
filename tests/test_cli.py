@@ -42,7 +42,9 @@ def test_rabbit_listen_command(settings, runner: CliRunner) -> None:
     from streaming.backends.rabbitmq import RabbitMQBackend
     from streaming.manager import initialize_engine
 
-    with mock.patch.object(RabbitMQBackend, "listen"):
+    with mock.patch.object(RabbitMQBackend, "listen") as mock_listen:
+        mock_listen.side_effect = lambda __, cb: cb(None, None, None, b"done")
+
         result = runner.invoke(cli, ["rabbit", "listen"])  # type: ignore[no-untyped-call]
         assert "Server: localhost:5672" in result.output
         assert "Listen on: " in result.output

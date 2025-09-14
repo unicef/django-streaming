@@ -96,11 +96,11 @@ class RabbitMQBackend(BaseBackend):
         if not self.channel or self.channel.is_closed:
             self.connect()
         if self.channel:
-            logger.debug("publish to %s %s", self.exchange, message["domain"])
+            logger.debug("publish to %s %s", self.exchange, message.get("domain", ""))
             try:
                 self.channel.basic_publish(
                     exchange=self.exchange,
-                    routing_key=message["domain"] or self.routing_key,
+                    routing_key=message.get("domain", self.routing_key) or self.routing_key,
                     body=json.dumps(message).encode(),
                     properties=pika.BasicProperties(
                         delivery_mode=pika.spec.PERSISTENT_DELIVERY_MODE,
