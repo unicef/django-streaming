@@ -4,7 +4,7 @@
 
 ## Installation
 
-The CLI is installed automatically when you install `django-streaming`. You can run it using the `streaming` command.
+The CLI is installed automatically when you install `django-streaming`. You can run it using the `stream` command.
 
 ## Basic Usage
 
@@ -37,7 +37,7 @@ stream rabbit send --help
 stream rabbit send --message "Hello from CLI!" --domain "my-app"
 ```
 
-### `streaming rabbit listen`
+### `stream rabbit listen`
 
 Listens for messages from a RabbitMQ queue.
 

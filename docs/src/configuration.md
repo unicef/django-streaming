@@ -14,7 +14,7 @@ The `django-streaming` library can be configured via the `STREAMING` dictionary 
 *   **`RETRY_COUNT`** (int, default: `3`):
     The number of times the backend will attempt to reconnect to the message broker if the connection is lost or fails during establishment.
 
-*   **`RETRY_DELAY`** (int, default: `5`):
+*   **`RETRY_DELAY`** (int, default: `1`):
     The delay in seconds between retry attempts when connecting to the message broker.
 
 *   **`MANAGER_CLASS`** (string, default: `"streaming.manager.ChangeManager"`):

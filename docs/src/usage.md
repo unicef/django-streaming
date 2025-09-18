@@ -1,6 +1,6 @@
 # Usage
 
-`hope-streaming` provides a flexible framework for streaming data from your Django applications to various backends.
+`django-streaming` provides a flexible framework for streaming data from your Django applications to various backends.
 
 ## Basic Usage
 
@@ -38,7 +38,7 @@ When using the `ThreadedChangeManager`, messages are queued and processed in a b
 
 ## Available Backends
 
-`hope-streaming` supports various backends, including:
+`django-streaming` supports various backends, including:
 
 -   **Console Backend:** For printing messages to the console (useful for debugging).
 -   **RabbitMQ Backend:** For publishing messages to a RabbitMQ message broker.

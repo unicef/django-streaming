@@ -10,13 +10,19 @@ Example `settings.py` configuration:
 
 ```python
 STREAMING = {
-    "BROKER_URL": "amqp://guest:guest@localhost:5672/%2F"
+    "BROKER_URL": "amqp://guest:guest@localhost:5672/connection_name=..&virtual_host=..&exchange=.."
 }
 ```
 
 -   `guest:guest`: Default RabbitMQ username and password.
 -   `localhost:5672`: Default RabbitMQ host and port.
--   `%2F`: URL-encoded virtual host (for the default virtual host `/`).
+
+Arguments:
+
+-   `connection_name`: Name of the connection to identify this client
+-   `exchange`: name of the exchange to use (default: `django-streaming-broadcast`)
+-   `timeout`: connection timeout (default: `0.5`)
+-   `virtual_host`: RabbitMQ virtual host timeout (default: `/`)
 
 ## Connection Reliability
 
@@ -27,12 +33,6 @@ Additionally, the connection will be gracefully closed when the Python process t
 ## Connection Naming
 
 You can assign a custom name to your RabbitMQ connection, which will be visible in the RabbitMQ management interface. This can be useful for monitoring and debugging. Configure the `CONNECTION_NAME` setting in your `STREAMING` dictionary:
-
-```python
-STREAMING = {
-    "CONNECTION_NAME": "my-django-app-publisher"
-}
-```
 
 ## Usage
 
@@ -46,7 +46,7 @@ manager.publish("Hello from RabbitMQ Backend!")
 
 ## Queue Name
 
-By default, messages are published to a queue named `django_model_changes`. You can customize this queue name in your `STREAMING` settings:
+By default, messages are published to a queue named `django_model_changes`. You can customize this queue name in your `STREAMING` settings by adding the `queue` parameter to the `BROKER_URL`:
 
 ```python
 STREAMING = {

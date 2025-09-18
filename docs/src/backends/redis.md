@@ -33,8 +33,7 @@ manager.publish("Hello from Redis Backend!")
 
 ## List Name
 
-By default, messages are pushed to a Redis list named `django_model_changes`.
-You can customize this list name in your `STREAMING` settings:
+By default, messages are pushed to a Redis list named `django_model_changes`. You can customize this list name in your `STREAMING` settings by adding the `queue` parameter to the `BROKER_URL`:
 
 ```python
 STREAMING = {
