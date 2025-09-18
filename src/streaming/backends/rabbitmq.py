@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 
 import pika.channel
 import pika.exceptions
+from pika import PlainCredentials
 from pika.exchange_type import ExchangeType
 
 from streaming.config import CONFIG
@@ -52,6 +53,7 @@ class RabbitMQBackend(BaseBackend):
                         host=self.host,
                         port=self.port,
                         virtual_host=self.virtual_host,
+                        credentials=PlainCredentials(self._parsed_url.username, self._parsed_url.password),
                         socket_timeout=self.timeout,
                         blocked_connection_timeout=self.timeout,
                         stack_timeout=self.timeout,
