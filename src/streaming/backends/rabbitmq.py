@@ -48,12 +48,16 @@ class RabbitMQBackend(BaseBackend):
 
         for __ in range(CONFIG.RETRY_COUNT):
             try:
+                if self._parsed_url.username:
+                    auth = PlainCredentials(self._parsed_url.username, self._parsed_url.password or "")
+                else:
+                    auth = PlainCredentials("guest", "guest")
                 self.connection = pika.BlockingConnection(
                     pika.ConnectionParameters(
                         host=self.host,
                         port=self.port,
                         virtual_host=self.virtual_host,
-                        credentials=PlainCredentials(self._parsed_url.username, self._parsed_url.password),
+                        credentials=auth,
                         socket_timeout=self.timeout,
                         blocked_connection_timeout=self.timeout,
                         stack_timeout=self.timeout,
