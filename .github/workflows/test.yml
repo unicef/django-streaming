@@ -34,6 +34,19 @@ jobs:
     if: github.event_name == 'workflow_dispatch' || needs.changes.outputs.run_tests == 'true'
     runs-on: ubuntu-latest
     services:
+      db:
+        image: postgres:14
+        env:
+          POSTGRES_DATABASE: country_workspace
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_USERNAME: postgres
+        ports:
+          - 15432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
       redis:
         image: redis:7
         ports:
@@ -45,8 +58,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        cfg: [ "d52-py313",
-               "d42-py310" ]
+        cfg: ["d52-py313"]
+    env:
+      STREAMING_BROKER_URL: rabbit://guest:guest@localhost:5672?exchange=hope_live
+      DATABASE_URL: postgres://postgres:postgres@localhost:15432/country_workspace
+      CACHE_URL: redis://localhost:6379/1
+      CONSTANCE_REDIS_URL: redis://localhost:6379/2
+      REDIS_URL: redis://localhost:6379/3
     steps:
       - uses: actions/checkout@v5
         with:

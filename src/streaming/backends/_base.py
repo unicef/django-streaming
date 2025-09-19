@@ -1,5 +1,5 @@
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 from urllib.parse import ParseResult, parse_qs, urlparse
 
 from streaming.config import DEFAULT_QUEUE_NAME
@@ -22,5 +22,5 @@ class BaseBackend:
     def initialize(self) -> None:
         pass
 
-    def publish(self, message: "EventType") -> None:
+    def publish(self, message: "EventType", **kwargs: Any) -> None:
         raise NotImplementedError()
