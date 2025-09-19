@@ -1,4 +1,7 @@
 import logging
+from unittest import mock
+from redis.exceptions import ConnectionError as RedisConnectionError
+
 
 import pytest
 
@@ -30,3 +33,8 @@ def test_error(settings) -> None:
 
     with pytest.raises(StreamingBackendError):
         RedisBackend(CONFIG.BROKER_URL)
+
+
+def test_connection_error(backend) -> None:
+    with mock.patch.object(backend.redis_client, "publish", side_effect=RedisConnectionError):
+        backend.publish({})

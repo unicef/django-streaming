@@ -1,7 +1,7 @@
 import json
 import logging
 import time
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import redis
 from redis.exceptions import ConnectionError as RedisConnectionError
@@ -48,7 +48,7 @@ class RedisBackend(BaseBackend):
                 time.sleep(CONFIG.RETRY_DELAY)
         raise StreamingBackendError("Could not connect to Redis after multiple retries.")
 
-    def publish(self, message: "EventType") -> None:
+    def publish(self, message: "EventType", **kwargs: Any) -> None:
         try:
             self.redis_client.publish(self.queue_name, json.dumps(message).encode())
         except RedisConnectionError:

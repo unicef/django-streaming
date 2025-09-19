@@ -1,5 +1,5 @@
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from ._base import BaseBackend
 
@@ -14,5 +14,5 @@ class DebugBackend(BaseBackend):
         super().__init__(url)
         self.messages: list[EventType] = []
 
-    def publish(self, message: "EventType") -> None:
+    def publish(self, message: "EventType", **kwargs: Any) -> None:
         self.messages.append(message)

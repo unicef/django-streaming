@@ -1,6 +1,6 @@
 import logging
 import sys
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from ._base import BaseBackend
 
@@ -15,6 +15,6 @@ class ConsoleBackend(BaseBackend):
         super().__init__(url)
         self.stream = self._options.get("streams", "stdout")
 
-    def publish(self, message: "EventType") -> None:
+    def publish(self, message: "EventType", **kwargs: Any) -> None:
         stream = getattr(sys, self.stream)
         stream.write(f"{message}\n")
