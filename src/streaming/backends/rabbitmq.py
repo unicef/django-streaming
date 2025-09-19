@@ -81,12 +81,13 @@ class RabbitMQBackend(BaseBackend):
                 time.sleep(CONFIG.RETRY_DELAY)
         logger.critical("Could not connect to RabbitMQ after multiple retries.")
 
-    def listen(self, domains: list[str], callback: "PikaCallback") -> None:
+    def listen(self, domains: list[str], callback: "PikaCallback", ack: bool = True) -> None:
         def _callback(
             ch: "BlockingChannel", method: "Basic.Deliver", properties: "BasicProperties", body: bytes
         ) -> None:
             callback(ch, method, properties, body)
-            ch.basic_ack(delivery_tag=method.delivery_tag)  # type: ignore[arg-type]
+            if ack:
+                ch.basic_ack(delivery_tag=method.delivery_tag)  # type: ignore[arg-type]
 
         if self.channel is None:
             self.connect()
