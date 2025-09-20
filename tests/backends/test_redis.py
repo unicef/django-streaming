@@ -1,9 +1,8 @@
 import logging
 from unittest import mock
-from redis.exceptions import ConnectionError as RedisConnectionError
-
 
 import pytest
+from redis.exceptions import ConnectionError as RedisConnectionError
 
 from streaming.backends.redis import RedisBackend
 from streaming.exceptions import StreamingBackendError

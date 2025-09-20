@@ -19,13 +19,35 @@ logger = logging.getLogger(__name__)
 
 
 @pytest.fixture
-def backend(settings) -> RabbitMQBackend:
-    settings.STREAMING = {"BROKER_URL": "rabbit://localhost:5672?queue=test"}
+def backend(settings, rabbit_server) -> RabbitMQBackend:
+    settings.STREAMING = {"BROKER_URL": f"rabbit://{rabbit_server}:5672?queue=test"}
     from streaming.config import CONFIG
 
     return RabbitMQBackend(CONFIG.BROKER_URL)
 
 
+@pytest.mark.withoutresponses
+def test_flow_logic(backend: RabbitMQBackend, caplog) -> None:
+    # new instance should not have connection
+    assert not backend.connection
+    # connection_name is available
+    assert backend.connection_name
+    backend.connect()
+    assert backend.connection
+
+
+@pytest.mark.withoutresponses
+def test_manager(backend: RabbitMQBackend, caplog) -> None:
+    from streaming.manager import initialize_engine
+
+    manager = initialize_engine(True)
+    assert not manager.backend.connection
+    assert manager.backend.connection_name
+    backend.connect()
+    assert backend.connection
+
+
+@pytest.mark.withoutresponses
 def test_publish_error(backend: RabbitMQBackend, caplog) -> None:
     backend.connect()
     with mock.patch.object(backend.channel, "basic_publish") as m:

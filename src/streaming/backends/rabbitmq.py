@@ -8,12 +8,13 @@ from typing import TYPE_CHECKING, Any
 import pika.channel
 import pika.exceptions
 from pika import PlainCredentials
+from pika.exceptions import ConnectionClosedByBroker, ConnectionWrongStateError
 from pika.exchange_type import ExchangeType
 
 from streaming.config import CONFIG
 
 from ..exceptions import StreamingCallbackError, StreamingCallbackFailure, StreamingConfigError
-from ..utils import DAY
+from ..utils import DAY, get_local_ip
 from ._base import BaseBackend
 
 if TYPE_CHECKING:
@@ -61,7 +62,7 @@ class RabbitMQBackend(BaseBackend):
         self.exchange = self._options.get("exchange", "django-streaming-broadcast")
         self.retry_exchange = f"retry_{self.exchange}"
 
-        self.connection_name = self._options.get("connection_name", "")
+        self.connection_name = self._options.get("connection_name", get_local_ip())
         self.timeout = float(self._options.get("timeout", 0.5))
         self.routing_key = self._options.get("routing_key", "")
         self.virtual_host = self._options.get("virtual_host", "/")
@@ -85,7 +86,7 @@ class RabbitMQBackend(BaseBackend):
                 "x-dead-letter-exchange": self.retry_exchange  # failed → retry
             },
         )
-        self.channel.queue_bind(exchange=self.exchange, queue="global_queue", routing_key="#")
+        self.channel.queue_bind(exchange=self.exchange, queue=f"{self.exchange}_global_queue", routing_key="#")
 
     def _connect(self) -> None:
         logger.debug("Connecting to %s:%s", self.host, self.port)
@@ -185,8 +186,11 @@ class RabbitMQBackend(BaseBackend):
             logger.critical("RabbitMQ connection not available after reconnect. Message not published.")
 
     def close(self) -> None:
-        if self.connection and self.connection.is_open:
-            logger.debug("Closing RabbitMQ connection.")
-            self.connection.close()
+        logger.debug("Closing RabbitMQ connection.")
+        try:
+            self.connection.close()  # type: ignore[union-attr]
+        except (ConnectionClosedByBroker, AttributeError, ConnectionWrongStateError):
+            pass
+        finally:
             self.connection = None
             self.channel = None

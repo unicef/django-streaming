@@ -132,16 +132,16 @@ def listen(name: str, domain: str) -> None:
     from streaming.manager import initialize_engine
 
     manager = initialize_engine(True)
-    backend = manager.backend
+    backend: RabbitMQBackend = manager.backend  # type: ignore[assignment]
 
-    if not isinstance(backend, RabbitMQBackend):
+    if not isinstance(manager.backend, RabbitMQBackend):
         raise click.ClickException("RabbitMQ backend is not configured. Please set BROKER_URL to a rabbit:// URL.")
 
     if not name:
         name = random.choice(names)  # noqa S311
-    if name != backend.connection_name:
-        backend.connection_name = name
-        backend.connect()
+
+    backend.connection_name = name
+    backend.connect()
 
     click.secho(f"Server: {backend.host}:{backend.port}")
     click.secho(f"Consumer: {name}")
@@ -155,5 +155,4 @@ def listen(name: str, domain: str) -> None:
     except KeyboardInterrupt:
         click.secho("\nStopping listener.", fg="yellow")
     finally:
-        if backend.connection and backend.connection.is_open:
-            backend.connection.close()
+        backend.close()

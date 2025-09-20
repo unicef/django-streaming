@@ -18,3 +18,6 @@ class ConsoleBackend(BaseBackend):
     def publish(self, message: "EventType", **kwargs: Any) -> None:
         stream = getattr(sys, self.stream)
         stream.write(f"{message}\n")
+
+    def listen(self, **kwargs: Any) -> None:
+        pass
