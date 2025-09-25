@@ -47,10 +47,6 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
-      redis:
-        image: redis:7
-        ports:
-          - 10002:6379
       rabbitmq:
         image: rabbitmq:3-management
         ports:
@@ -62,9 +58,6 @@ jobs:
     env:
       STREAMING_BROKER_URL: rabbit://guest:guest@localhost:10000?exchange=hope_live
       DATABASE_URL: postgres://postgres:postgres@localhost:15432/country_workspace
-      CACHE_URL: redis://localhost:10002/1
-      CONSTANCE_REDIS_URL: redis://localhost:10002/2
-      REDIS_URL: redis://localhost:10002/3
     steps:
       - uses: actions/checkout@v5
         with:

@@ -99,4 +99,3 @@ nav:
         - Console Backend: backends/console.md
         - Debug Backend: backends/debug.md
         - RabbitMQ Backend: backends/rabbitmq.md
-        - Redis Backend: backends/redis.md

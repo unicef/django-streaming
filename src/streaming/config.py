@@ -13,7 +13,7 @@ DEFAULT_QUEUE_NAME = "django_model_changes"
 
 class StreamingConfig:
     _DEFAULTS = {
-        "BROKER_URL": "redis://localhost:6379/0?queue=hope_changes",
+        "BROKER_URL": "console://",
         "RETRY_COUNT": 3,
         "RETRY_DELAY": 1,
         "MANAGER_CLASS": "streaming.manager.ChangeManager",

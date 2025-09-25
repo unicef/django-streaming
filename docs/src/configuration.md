@@ -4,12 +4,11 @@ The `django-streaming` library can be configured via the `STREAMING` dictionary 
 
 ## General Settings
 
-*   **`BROKER_URL`** (string, default: `"redis://localhost:6379/0?queue=hope_changes"`):
+*   **`BROKER_URL`** (string, default: `"console://"`):
     The URL for the message broker. This determines which backend is used and its connection parameters. Examples:
     *   `console://`
     *   `debug://`
     *   `amqp://guest:guest@localhost:5672/%2F` (for RabbitMQ)
-    *   `redis://localhost:6379/0` (for Redis)
 
 *   **`RETRY_COUNT`** (int, default: `3`):
     The number of times the backend will attempt to reconnect to the message broker if the connection is lost or fails during establishment.

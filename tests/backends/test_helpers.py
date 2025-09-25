@@ -8,7 +8,7 @@ from streaming.exceptions import StreamingConfigError
 logger = logging.getLogger(__name__)
 
 
-@pytest.fixture(params=["console://", "redis://localhost:6379/0", "rabbit://localhost:5672"])
+@pytest.fixture(params=["console://", "rabbit://localhost:5672"])
 def url(request):
     return request.param
 

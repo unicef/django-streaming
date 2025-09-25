@@ -42,6 +42,5 @@ When using the `ThreadedChangeManager`, messages are queued and processed in a b
 
 -   **Console Backend:** For printing messages to the console (useful for debugging).
 -   **RabbitMQ Backend:** For publishing messages to a RabbitMQ message broker.
--   **Redis Backend:** For publishing messages to a Redis instance.
 
 Refer to the specific backend documentation for detailed configuration and usage instructions.

@@ -10,7 +10,7 @@
 `django-streaming` is a robust and flexible Django application designed for efficiently streaming data from your
 Django projects to various message brokers.
 
-It provides a pluggable backend architecture supporting popular options like RabbitMQ and Redis, alongside console and
+It provides a pluggable backend architecture supporting popular options like RabbitMQ, alongside console and
 debug backends for development. With features like a threaded change manager for non-blocking asynchronous
 notifications, configurable connection retry mechanisms, and graceful shutdown handling, django-streaming ensures
 reliable data delivery. It seamlessly integrates with Django's ORM via signals to automatically stream model changes

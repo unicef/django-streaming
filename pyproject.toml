@@ -44,9 +44,6 @@ optional-dependencies.rabbitmq = [
   "pika>=1.3.2",
 ]
 
-optional-dependencies.redis = [
-  "redis>=5",
-]
 urls.Documentation = "https://github.com/UNICEF/django-streaming"
 urls.Homepage = "https://github.com/UNICEF/django-streaming"
 
@@ -94,7 +91,6 @@ type-check = [
   "mypy",
   "types-markdown",
   "types-pika",
-  "types-redis",
   "types-requests",
 ]
 

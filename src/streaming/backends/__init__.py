@@ -22,10 +22,6 @@ def get_backend() -> "BaseBackend":
         from .console import ConsoleBackend
 
         return ConsoleBackend(CONFIG.BROKER_URL)
-    if parsed_url.scheme == "redis":
-        from .redis import RedisBackend
-
-        return RedisBackend(CONFIG.BROKER_URL)
     if parsed_url.scheme == "rabbit":
         from .rabbitmq import RabbitMQBackend
 
