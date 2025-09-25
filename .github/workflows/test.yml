@@ -50,21 +50,21 @@ jobs:
       redis:
         image: redis:7
         ports:
-          - 6379:6379
+          - 10002:6379
       rabbitmq:
         image: rabbitmq:3-management
         ports:
-          - 5672:5672
+          - 10000:5672
     strategy:
       fail-fast: false
       matrix:
         cfg: ["d52-py313"]
     env:
-      STREAMING_BROKER_URL: rabbit://guest:guest@localhost:5672?exchange=hope_live
+      STREAMING_BROKER_URL: rabbit://guest:guest@localhost:10000?exchange=hope_live
       DATABASE_URL: postgres://postgres:postgres@localhost:15432/country_workspace
-      CACHE_URL: redis://localhost:6379/1
-      CONSTANCE_REDIS_URL: redis://localhost:6379/2
-      REDIS_URL: redis://localhost:6379/3
+      CACHE_URL: redis://localhost:10002/1
+      CONSTANCE_REDIS_URL: redis://localhost:10002/2
+      REDIS_URL: redis://localhost:10002/3
     steps:
       - uses: actions/checkout@v5
         with:
