@@ -60,7 +60,6 @@ dev = [
   "pytest>=8.4.1",
   "pytest-cov>=6.2.1",
   "pytest-django>=4.11.1",
-  "pytest-docker>=3.2.3",
   "pytest-responses>=0.5.1",
   "responses>=0.25.8",
   "seleniumbase>=4.38.2",

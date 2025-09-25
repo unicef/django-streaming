@@ -88,7 +88,7 @@ class RabbitMQBackend(BaseBackend):
         )
         self.channel.queue_bind(exchange=self.exchange, queue=f"{self.exchange}_global_queue", routing_key="#")
 
-    def _connect(self) -> None:
+    def _connect(self, raise_if_error: bool = False) -> None:
         logger.debug("Connecting to %s:%s", self.host, self.port)
         if self.connection and self.connection.is_open:
             self.close()
@@ -116,17 +116,21 @@ class RabbitMQBackend(BaseBackend):
                         },
                     )
                 )
-            except (socket.gaierror, pika.exceptions.AMQPConnectionError):
+            except (socket.gaierror, pika.exceptions.AMQPConnectionError) as e:
                 logger.warning(
                     f"Could not connect to RabbitMQ. Retrying in {CONFIG.RETRY_DELAY} seconds...",
                 )
                 time.sleep(CONFIG.RETRY_DELAY)
+                if raise_if_error:
+                    raise StreamingConfigError(f"Error connecting {self.connection_url}") from e
         logger.critical("Could not connect to RabbitMQ after multiple retries.")
 
-    def connect(self) -> None:
-        self._connect()
+    def connect(self, raise_if_error: bool = False) -> None:
+        self._connect(raise_if_error)
         if self.connection:
             self._configure()
+        elif raise_if_error:
+            raise StreamingConfigError("No active connection")
 
     def _basic_publish(self, message: "EventType", retry_count: int = 0) -> None:
         if not self.channel:

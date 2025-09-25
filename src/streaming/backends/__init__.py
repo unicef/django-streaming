@@ -13,7 +13,11 @@ logger = logging.getLogger(__name__)
 def get_backend() -> "BaseBackend":
     from streaming.config import CONFIG
 
+    if not CONFIG.BROKER_URL:
+        raise StreamingConfigError("Empty BROKER_URL")
+
     parsed_url = urlparse(CONFIG.BROKER_URL)
+
     if parsed_url.scheme == "console":
         from .console import ConsoleBackend
 
@@ -30,4 +34,4 @@ def get_backend() -> "BaseBackend":
         from .debug import DebugBackend
 
         return DebugBackend(CONFIG.BROKER_URL)
-    raise StreamingConfigError(f"Broker not supported: {parsed_url.scheme}")
+    raise StreamingConfigError(f"Broker not supported: '{parsed_url.scheme}://{parsed_url.hostname}:{parsed_url.port}'")

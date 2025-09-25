@@ -90,6 +90,7 @@ plugins:
 
 nav:
     - Home: index.md
+    - Contributing: contributing.md
     - Installation: installation.md
     - Usage: usage.md
     - Configuration: configuration.md

@@ -8,6 +8,7 @@ import pytest
 from pika.adapters.blocking_connection import BlockingChannel
 from pika.spec import Basic, BasicProperties
 
+from streaming.backends import get_backend
 from streaming.backends.rabbitmq import MAX_RETRIES, Callback, RabbitMQBackend
 from streaming.exceptions import StreamingCallbackError, StreamingCallbackFailure
 from streaming.utils import make_event
@@ -20,19 +21,20 @@ logger = logging.getLogger(__name__)
 
 @pytest.fixture
 def backend(settings, rabbit_server) -> RabbitMQBackend:
-    settings.STREAMING = {"BROKER_URL": f"rabbit://{rabbit_server}:5672?queue=test"}
-    from streaming.config import CONFIG
-
-    return RabbitMQBackend(CONFIG.BROKER_URL)
+    settings.STREAMING = {"BROKER_URL": f"rabbit://{rabbit_server}?queue=test"}
+    # from streaming.config import CONFIG
+    return get_backend()
+    # return RabbitMQBackend(CONFIG.BROKER_URL)
 
 
 @pytest.mark.withoutresponses
 def test_flow_logic(backend: RabbitMQBackend, caplog) -> None:
     # new instance should not have connection
+
     assert not backend.connection
     # connection_name is available
     assert backend.connection_name
-    backend.connect()
+    backend.connect(True)
     assert backend.connection
 
 
@@ -43,13 +45,13 @@ def test_manager(backend: RabbitMQBackend, caplog) -> None:
     manager = initialize_engine(True)
     assert not manager.backend.connection
     assert manager.backend.connection_name
-    backend.connect()
+    backend.connect(True)
     assert backend.connection
 
 
 @pytest.mark.withoutresponses
 def test_publish_error(backend: RabbitMQBackend, caplog) -> None:
-    backend.connect()
+    backend.connect(True)
     with mock.patch.object(backend.channel, "basic_publish") as m:
         m.side_effect = Exception
         with caplog.at_level(logging.CRITICAL):
