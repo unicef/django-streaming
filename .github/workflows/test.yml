@@ -54,7 +54,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        cfg: ["d52-py313"]
+        cfg: ["d52-py313", "d42-py310", "d32-py310"]
     env:
       STREAMING_BROKER_URL: rabbit://guest:guest@localhost:10000?exchange=hope_live
       DATABASE_URL: postgres://postgres:postgres@localhost:15432/country_workspace
