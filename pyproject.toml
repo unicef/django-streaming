@@ -39,8 +39,6 @@ dependencies = [
   "django-stubs-ext",
   "markdown>=3.8.2",
   "requests>=2.32.5",
-]
-optional-dependencies.rabbitmq = [
   "pika>=1.3.2",
 ]
 
