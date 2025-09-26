@@ -454,12 +454,8 @@ dependencies = [
     { name = "django-stubs-ext", version = "5.1.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
     { name = "django-stubs-ext", version = "5.2.5", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.10'" },
     { name = "markdown" },
-    { name = "requests" },
-]
-
-[package.optional-dependencies]
-rabbitmq = [
     { name = "pika" },
+    { name = "requests" },
 ]
 
 [package.dev-dependencies]
@@ -515,10 +511,9 @@ requires-dist = [
     { name = "django", specifier = ">=4" },
     { name = "django-stubs-ext" },
     { name = "markdown", specifier = ">=3.8.2" },
-    { name = "pika", marker = "extra == 'rabbitmq'", specifier = ">=1.3.2" },
+    { name = "pika", specifier = ">=1.3.2" },
     { name = "requests", specifier = ">=2.32.5" },
 ]
-provides-extras = ["rabbitmq"]
 
 [package.metadata.requires-dev]
 dev = [
