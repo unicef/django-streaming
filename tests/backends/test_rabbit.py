@@ -216,3 +216,22 @@ def test_backend__max_retry(backend, caplog) -> None:
         assert f"Dropping after {MAX_RETRIES} retries" in caplog.text
 
     assert not backend._basic_publish.called
+
+
+def test_listen_with_arguments(backend) -> None:
+    backend.connect()
+    assert backend.channel is not None
+    with mock.patch.object(backend.channel, "queue_declare") as mock_queue_declare:
+        with mock.patch.object(backend.channel, "start_consuming"):
+            backend.listen(
+                queue_name="test_queue",
+                binding_keys=["abc"],
+                callback=MagicMock,
+                durable=False,
+                queue_arguments={"x-message-ttl": 1000},
+            )
+            mock_queue_declare.assert_called_with(
+                queue="test_queue",
+                durable=False,
+                arguments={"x-message-ttl": 1000},
+            )

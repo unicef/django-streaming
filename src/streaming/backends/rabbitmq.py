@@ -13,8 +13,8 @@ from pika.exchange_type import ExchangeType
 
 from streaming.config import CONFIG
 
-from ..exceptions import StreamingCallbackError, StreamingCallbackFailure, StreamingConfigError
-from ..utils import DAY, get_local_ip
+from ..exceptions import StreamingCallbackError, StreamingCallbackFailure, StreamingConfigError, AuthorizationError
+from ..utils import get_local_ip, json_dumps
 from ._base import BaseBackend
 
 if TYPE_CHECKING:
@@ -35,7 +35,7 @@ class Callback:
         self.ack = ack
 
     def __call__(
-        self, ch: "BlockingChannel", method: "Basic.Deliver", properties: "BasicProperties", body: bytes
+            self, ch: "BlockingChannel", method: "Basic.Deliver", properties: "BasicProperties", body: bytes
     ) -> None:
         try:
             self.user_callback(ch, method, properties, body)
@@ -60,12 +60,11 @@ class RabbitMQBackend(BaseBackend):
         self.port = int(self._parsed_url.port) if self._parsed_url.port else 5672
 
         self.exchange = self._options.get("exchange", "django-streaming-broadcast")
-        self.retry_exchange = f"retry_{self.exchange}"
-
-        self.connection_name = self._options.get("connection_name", get_local_ip())
         self.timeout = float(self._options.get("timeout", 0.5))
-        self.routing_key = self._options.get("routing_key", "")
         self.virtual_host = self._options.get("virtual_host", "/")
+
+        self.retry_exchange = f"retry_{self.exchange}"
+        self.connection_name = self._options.get("connection_name", get_local_ip())
 
         self.connection: pika.BlockingConnection | None = None
         self.channel: BlockingChannel | None = None
@@ -78,15 +77,6 @@ class RabbitMQBackend(BaseBackend):
         self.channel = self.connection.channel()
         self.channel.exchange_declare(exchange=self.exchange, exchange_type=ExchangeType.topic, durable=True)
         self.channel.exchange_declare(self.retry_exchange, exchange_type=ExchangeType.direct, durable=True)
-
-        self.channel.queue_declare(
-            queue=f"{self.exchange}_global_queue",
-            durable=True,
-            arguments={
-                "x-dead-letter-exchange": self.retry_exchange  # failed → retry
-            },
-        )
-        self.channel.queue_bind(exchange=self.exchange, queue=f"{self.exchange}_global_queue", routing_key="#")
 
     def _connect(self, raise_if_error: bool = False) -> None:
         logger.debug("Connecting to %s:%s", self.host, self.port)
@@ -116,7 +106,11 @@ class RabbitMQBackend(BaseBackend):
                         },
                     )
                 )
-            except (socket.gaierror, pika.exceptions.AMQPConnectionError) as e:
+                return
+            except (pika.exceptions.AuthenticationError, pika.exceptions.ProbableAuthenticationError,
+                    pika.exceptions.ProbableAccessDeniedError) as e:
+                raise AuthorizationError(str(e)) from e
+            except (socket.gaierror, pika.exceptions.AMQPError) as e:
                 logger.warning(
                     f"Could not connect to RabbitMQ. Retrying in {CONFIG.RETRY_DELAY} seconds...",
                 )
@@ -129,19 +123,19 @@ class RabbitMQBackend(BaseBackend):
         self._connect(raise_if_error)
         if self.connection:
             self._configure()
-        elif raise_if_error:
-            raise StreamingConfigError("No active connection")
+        # elif raise_if_error:
+        #     raise StreamingConfigError("No active connection")
 
-    def _basic_publish(self, message: "EventType", retry_count: int = 0) -> None:
+    def _basic_publish(self, message: "EventType", routing_key: str, retry_count: int = 0) -> None:
         if not self.channel:
             raise StreamingConfigError("No active channel")
         self.channel.basic_publish(
             exchange=self.exchange,
-            routing_key=message.get("domain", self.routing_key) or self.routing_key,
-            body=json.dumps(message).encode(),
+            routing_key=routing_key,
+            body=json_dumps(message).encode(),
             properties=pika.BasicProperties(
                 delivery_mode=pika.spec.PERSISTENT_DELIVERY_MODE,
-                expiration=str(DAY * 2 * 1000),  # milliseconds
+                expiration=str(CONFIG.MESSAGE_TTL * 1000),  # milliseconds
                 headers={"x-retries": retry_count},
             ),
         )
@@ -149,7 +143,7 @@ class RabbitMQBackend(BaseBackend):
     def _handle_retry(self, message: "EventType", ch: "BlockingChannel", method: "Basic.Deliver", retries: int) -> None:
         ch.basic_ack(method.delivery_tag)  # type: ignore[arg-type]
         if retries < MAX_RETRIES:
-            delay = 2000 * (2**retries)  # ms (exponential backoff)
+            delay = 2000 * (2 ** retries)  # ms (exponential backoff)
             delay_queue = f"{self.exchange}_retry_{delay}ms"
 
             # Declare a delay queue with TTL
@@ -162,32 +156,45 @@ class RabbitMQBackend(BaseBackend):
                 },
             )
             ch.queue_bind(delay_queue, self.retry_exchange, routing_key="task")
-            self._basic_publish(message, retries + 1)
+            self._basic_publish(message, routing_key=method.routing_key, retry_count=retries + 1)
         else:
             logger.error(f"Dropping after {MAX_RETRIES} retries")
 
-    def listen(self, domains: list[str], callback: "PikaCallback", ack: bool = True) -> None:
+    def listen(
+            self,
+            queue_names: list[str],
+            binding_keys: list[str],
+            callback: "PikaCallback",
+            ack: bool = True,
+            durable: bool = True,
+            queue_arguments: dict | None = None,
+    ) -> None:
         if self.channel is None:
             self.connect()
         _callback = Callback(self, callback, ack=ack)
-        for domain in domains:
-            queue_name = f"{self.connection_name.lower()}_sub_to_{domain}"
-            self.channel.queue_declare(queue=queue_name, durable=True)  # type: ignore[union-attr]
-            self.channel.queue_bind(exchange=self.exchange, queue=queue_name, routing_key=domain)  # type: ignore[union-attr]
+        for queue_name in queue_names:
+            self.channel.queue_declare(queue=queue_name, durable=durable, arguments=queue_arguments)  # type: ignore[union-attr]
+
+            for binding_key in binding_keys:
+                self.channel.queue_bind(exchange=self.exchange, queue=queue_name, routing_key=binding_key)  # type: ignore[union-attr]
+
             self.channel.basic_consume(queue=queue_name, on_message_callback=_callback, auto_ack=False)  # type: ignore[union-attr]
+
         self.channel.start_consuming()  # type: ignore[union-attr]
 
-    def publish(self, message: "EventType", retry_count: int = 0, **kwargs: Any) -> None:
+    def publish(self, message: "EventType", routing_key: str, retry_count: int = 0, **kwargs: Any) -> bool:
         if not self.channel or self.channel.is_closed:
             self.connect()
         if self.channel:
             logger.debug("publish to %s %s", self.exchange, message.get("domain", ""))
             try:
-                self._basic_publish(message, 0)
+                self._basic_publish(message, routing_key, 0)
+                return True
             except Exception as e:  # noqa: BLE001
                 logger.critical("Unhandled error sending to RabbitMQ. Message not published.", exc_info=e)
         else:
             logger.critical("RabbitMQ connection not available after reconnect. Message not published.")
+        return False
 
     def close(self) -> None:
         logger.debug("Closing RabbitMQ connection.")

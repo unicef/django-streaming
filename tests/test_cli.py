@@ -4,6 +4,7 @@ import pytest
 from click.testing import CliRunner
 
 from streaming.backends.console import ConsoleBackend
+from streaming.__cli__ import cli
 
 
 @pytest.fixture
@@ -12,67 +13,76 @@ def runner() -> CliRunner:
 
 
 def test_cli_command(runner: CliRunner) -> None:
-    from streaming.__cli__ import cli
-
-    result = runner.invoke(cli)  # type: ignore[no-untyped-call]
-    assert result.exit_code == 2
+    result = runner.invoke(cli)
+    assert result.exit_code == 0
 
 
-def test_ctrl_c(settings, runner: CliRunner) -> None:
+def test_listen_ctrl_c(settings, runner: CliRunner) -> None:
     settings.STREAMING = {"BROKER_URL": "rabbit://localhost:5672?queue=test&exchange=test", "RETRY_DELAY": 0.1}
-    from streaming.__cli__ import cli
 
     with mock.patch("streaming.backends.rabbitmq.RabbitMQBackend.listen") as m:
         m.side_effect = KeyboardInterrupt
-        result = runner.invoke(cli, ["rabbit", "listen"])  # type: ignore[no-untyped-call]
+        result = runner.invoke(cli, ["listen", "--queue", "test", "a.b"])
     assert result.exit_code == 0
     assert "Stopping listener." in result.output
 
 
-@pytest.mark.parametrize("cmd", ["send", "listen"])
+@pytest.mark.parametrize("cmd", ["send", "listen", "purge"])
 def test_rabbit_wrong_backend(settings, runner: CliRunner, cmd) -> None:
     from streaming.manager import initialize_engine
 
     settings.STREAMING = {"BROKER_URL": "console://"}
-    from streaming.__cli__ import cli
 
     manager = initialize_engine(True)
     backend = manager.backend
     assert isinstance(backend, ConsoleBackend)
 
-    result = runner.invoke(cli, ["rabbit", cmd])  # type: ignore[no-untyped-call]
+    result = runner.invoke(cli, [cmd, "test"])
     assert result.exit_code == 1
-    assert result.output == "Error: RabbitMQ backend is not configured. Please set BROKER_URL to a rabbit:// URL.\n"
+    assert "RabbitMQ backend is not configured" in result.output
 
 
-def test_rabbit_send_command(settings, runner: CliRunner) -> None:
+def test_send_command(settings, runner: CliRunner) -> None:
     settings.STREAMING = {"BROKER_URL": "rabbit://localhost:5672?queue=test&exchange=test", "RETRY_DELAY": 0.1}
-    from streaming.__cli__ import cli
 
-    result = runner.invoke(cli, ["rabbit", "send", "--message", "Test Message", "--domain", "test_domain"])  # type: ignore[no-untyped-call]
-    assert "Server: localhost:5672" in result.output
-    assert "Sent:" in result.output
+    with mock.patch("streaming.backends.rabbitmq.RabbitMQBackend.publish") as mock_publish:
+        result = runner.invoke(cli, ["send", "a.b", "--message", "Test Message"])
+        assert result.exit_code == 0
+        assert "Sent:" in result.output
+        mock_publish.assert_called_once()
 
 
-def test_rabbit_listen_command(settings, runner: CliRunner) -> None:
+def test_listen_command(settings, runner: CliRunner) -> None:
     settings.STREAMING = {"BROKER_URL": "rabbit://localhost:5672?queue=test&exchange=test"}
-    from streaming.__cli__ import cli
     from streaming.backends.rabbitmq import RabbitMQBackend
-    from streaming.manager import initialize_engine
 
     with mock.patch.object(RabbitMQBackend, "listen") as mock_listen:
-        mock_listen.side_effect = lambda __, cb: cb(None, None, None, b"done")
+        result = runner.invoke(cli, ["listen", "--queue", "test_queue", "a.b"])
+        assert result.exit_code == 0
+        mock_listen.assert_called_once_with(['test_queue'], ['a.b'], mock.ANY)
 
-        result = runner.invoke(cli, ["rabbit", "listen"])  # type: ignore[no-untyped-call]
-        assert "Server: localhost:5672" in result.output
-        assert "Listen on: " in result.output
 
-        runner.invoke(cli, ["rabbit", "listen", "--name", "test_listener", "--domain", "test_domain"])  # type: ignore[no-untyped-call]
-        result = runner.invoke(cli, ["rabbit", "listen", "--name", "test_listener", "--domain", "test_domain"])  # type: ignore[no-untyped-call]
-        assert "Server: localhost:5672" in result.output
-        assert "Listen on: test test_domain" in result.output
+def test_purge_command(settings, runner: CliRunner) -> None:
+    settings.STREAMING = {"BROKER_URL": "rabbit://localhost:5672?queue=test&exchange=test"}
+    from streaming.backends.rabbitmq import RabbitMQBackend
 
-        current_manager = initialize_engine()
-        current_manager.backend.close()
-        result = runner.invoke(cli, ["rabbit", "listen", "--name", "test_listener2"])  # type: ignore[no-untyped-call]
-        assert "Server: localhost:5672" in result.output
+    with mock.patch.object(RabbitMQBackend, "connect") as mock_connect:
+        with mock.patch.object(RabbitMQBackend, "close") as mock_close:
+            with mock.patch.object(RabbitMQBackend, "channel") as mock_channel:
+                mock_channel.queue_purge.return_value = mock.Mock(method=mock.Mock(message_count=5))
+                result = runner.invoke(cli, ["purge", "test_queue"])
+                assert result.exit_code == 0
+                assert "Purged 5 messages from queue 'test_queue'" in result.output
+
+
+def test_check_command(settings, runner: CliRunner) -> None:
+    settings.STREAMING = {"BROKER_URL": "rabbit://localhost:5672?queue=test&exchange=test"}
+    from streaming.backends.rabbitmq import RabbitMQBackend
+
+    with mock.patch.object(RabbitMQBackend, "connect") as mock_connect:
+        with mock.patch.object(RabbitMQBackend, "close") as mock_close:
+            result = runner.invoke(cli, ["check"])
+            assert result.exit_code == 0
+            assert "Streaming Configuration:" in result.output
+            assert "BROKER_URL: rabbit://localhost:5672?queue=test&exchange=test" in result.output
+            assert "Connection successful." in result.output
