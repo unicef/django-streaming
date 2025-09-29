@@ -34,41 +34,39 @@ Additionally, the connection will be gracefully closed when the Python process t
 
 You can assign a custom name to your RabbitMQ connection, which will be visible in the RabbitMQ management interface. This can be useful for monitoring and debugging. Configure the `CONNECTION_NAME` setting in your `STREAMING` dictionary:
 
-## Usage
+## Queue Configuration
 
-Once configured, you can publish messages using the `manager.publish()` method. These messages will be sent to the configured RabbitMQ queue.
+With the RabbitMQ backend, you can define multiple queues with different bindings and properties. This is done in your `settings.py` via the `STREAMING['QUEUES']` dictionary.
 
-```python
-from streaming.manager import manager
-
-manager.publish("Hello from RabbitMQ Backend!")
-```
-
-## Queue Name
-
-By default, messages are published to a queue named `django_model_changes`. You can customize this queue name in your `STREAMING` settings by adding the `queue` parameter to the `BROKER_URL`:
+Example `settings.py` configuration:
 
 ```python
 STREAMING = {
-    "BROKER_URL": "amqp://guest:guest@localhost:5672/?queue=my_custom_queue",
+    "BROKER_URL": "amqp://guest:guest@localhost:5672/",
+    "QUEUES": {
+        "invoices": {
+            "name": "invoices_queue",
+            "binding_keys": ["invoices.*"],
+            "options": {"x-message-ttl": 60000}
+        },
+        "orders": {
+            "name": "orders_queue",
+            "binding_keys": ["orders.*"],
+        }
+    }
 }
 ```
 
-## Advanced Queue Configuration
+For each queue, you can specify:
+*   `name`: The actual queue name on the broker. If not provided, the alias is used as the name.
+*   `binding_keys`: A list of routing keys to bind the queue to the exchange.
+*   `options`: A dictionary of arguments to pass to the `queue_declare` method of the backend. This can be used to set queue properties like `x-message-ttl`.
 
-When consuming messages, you can configure advanced queue properties like durability and message time-to-live (TTL).
+## Listening for messages
 
-### Durable Queues
+To listen for messages, you can use the `stream listen` command line interface. See the [CLI documentation](cli.md) for more details.
 
-By default, queues are declared as durable, meaning they will survive a broker restart. You can control this behavior using the `durable` parameter in the `listen` method.
-
-### Message Time-to-Live (TTL)
-
-You can set a message TTL for a queue, which defines how long a message can live in the queue before it is discarded. This is useful to prevent queues from growing indefinitely with old messages.
-
-To set a TTL, you can use the `queue_arguments` parameter in the `listen` method and pass the `x-message-ttl` argument (in milliseconds).
-
-Example:
+If you need to listen for messages from your code, you can use the `manager.listen()` method.
 
 ```python
 from streaming.manager import manager
@@ -76,11 +74,11 @@ from streaming.manager import manager
 def my_callback(ch, method, properties, body):
     print(f"Received message: {body}")
 
-manager.listen(
-    queue_name="my_queue",
-    binding_keys=["my_routing_key"],
-    callback=my_callback,
-    durable=True,
-    queue_arguments={"x-message-ttl": 60000}  # 1 minute TTL
-)
+# Listen to all configured queues
+manager.listen(callback=my_callback)
+
+# Listen to a specific queue (by alias)
+manager.listen(callback=my_callback, queues=["invoices"])
 ```
+
+The `listen` method of the `RabbitMQBackend` now takes a `callback` function and an optional list of queue aliases to listen to. If no queues are specified, it will listen to all queues configured in `STREAMING['QUEUES']`.

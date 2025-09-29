@@ -23,7 +23,7 @@ def test_register(manager: ChangeManager):
 
 
 def test_notify(manager: ChangeManager):
-    manager.notify(make_event("test"))
+    manager.notify("a.b", make_event("test"))
     assert manager.backend.messages
 
 
@@ -31,7 +31,7 @@ def test_lifecycle(manager: ChangeManager):
     manager.register(User)
     User.objects.create(username="test")
     assert len(manager.backend.messages) == 1
-    msg = manager.backend.messages[-1]
-    assert msg["event"] == "post_save"
-    assert msg["domain"] == User._meta.app_label
+    rk, msg = manager.backend.messages[-1]
+    assert rk == "auth.user.save"
+    assert msg["event"] == "auth.user.save"
     assert msg["payload"]["created"]

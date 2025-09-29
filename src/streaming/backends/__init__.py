@@ -2,12 +2,15 @@ import logging
 from typing import TYPE_CHECKING
 from urllib.parse import urlparse
 
-from streaming.exceptions import StreamingConfigError
+from ..exceptions import StreamingConfigError
+from .rabbitmq import RabbitMQBackend
 
 if TYPE_CHECKING:
     from ._base import BaseBackend
 
 logger = logging.getLogger(__name__)
+
+__all__ = ["RabbitMQBackend", "get_backend"]
 
 
 def get_backend() -> "BaseBackend":

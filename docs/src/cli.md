@@ -14,7 +14,7 @@ This will show you the main commands: `listen`, `send`, `purge`, and `check`.
 
 ## `listen`
 
-The `listen` command allows you to listen for messages from one or more RabbitMQ queues.
+The `listen` command allows you to listen for messages from one or more RabbitMQ queues configured in your `settings.py`.
 
 ```bash
 stream listen --help
@@ -22,8 +22,7 @@ stream listen --help
 
 **Options:**
 
-*   `BINDING_KEYS`: (argument, required) One or more binding keys to listen for.
-*   `--queue TEXT`: (option, required, multiple) The name of the queue to listen to. You can specify this option multiple times to listen to multiple queues.
+*   `--queues TEXT`: (option, multiple) The alias of the queue to listen to. You can specify this option multiple times to listen to multiple queues. If not provided, it will listen to all queues defined in `STREAMING['QUEUES']`.
 *   `--payload`: (flag) Print the message payload.
 *   `--autoreload`: (flag) Enable auto-reloading for development.
 *   `--pretty`: (flag) Pretty-print the JSON payload.
@@ -31,10 +30,10 @@ stream listen --help
 **Example:**
 
 ```bash
-stream listen "fattura.*" --queue my_queue --pretty
+stream listen --queues invoices --pretty
 ```
 
-This command will listen to the `my_queue` for messages with a routing key matching `fattura.*` and pretty-print the payload.
+This command will listen to the queue with the alias `invoices` and pretty-print the payload.
 
 ## `send`
 
@@ -60,20 +59,16 @@ stream send fattura.emessa --message '''{"amount": 100, "customer": "Acme Corp"}
 
 ## `purge`
 
-The `purge` command purges all messages from one or more specified queues.
+The `purge` command purges all messages from all queues configured in `STREAMING['QUEUES']`.
 
 ```bash
 stream purge --help
 ```
 
-**Arguments:**
-
-*   `QUEUES`: (required) One or more queue names to purge.
-
 **Example:**
 
 ```bash
-stream purge my_queue another_queue
+stream purge
 ```
 
 ## `check`

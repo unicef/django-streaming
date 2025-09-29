@@ -11,6 +11,10 @@ class StreamingConfigError(StreamingError):
     pass
 
 
+class AuthorizationError(StreamingConfigError):
+    pass
+
+
 class StreamingBackendError(StreamingError):
     pass
 
