@@ -22,3 +22,6 @@ class ConsoleBackend(BaseBackend):
 
     def listen(self, **kwargs: Any) -> None:
         pass
+
+    def connect(self, raise_if_error: bool = False) -> None:
+        pass

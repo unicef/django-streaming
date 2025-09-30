@@ -21,6 +21,8 @@ exclude_lines =
     if TYPE_CHECKING
     raise NotImplementedError
     pass
+    @abstractmethod
+
 
 ignore_errors = True
 

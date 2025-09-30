@@ -10,12 +10,11 @@ from pika.spec import PERSISTENT_DELIVERY_MODE, Basic, BasicProperties
 
 from streaming.backends import get_backend
 from streaming.backends.rabbitmq import MAX_RETRIES, Callback, RabbitMQBackend
-from streaming.exceptions import StreamingCallbackError, StreamingCallbackFailure, StreamingConfigError
+from streaming.exceptions import StreamingCallbackError, StreamingCallbackFailure, StreamingConfigError, StreamingError
 from streaming.utils import make_event
 
 if TYPE_CHECKING:
     from streaming.types import EventType
-
 
 logger = logging.getLogger(__name__)
 
@@ -59,8 +58,22 @@ def test_publish_error(backend: RabbitMQBackend, caplog) -> None:
 
 @pytest.mark.withoutresponses
 def test_configure_exchanges(backend: RabbitMQBackend, caplog) -> None:
+    with pytest.raises(StreamingConfigError):
+        backend.configure_exchanges()
+
     backend.connect(True)
     backend.configure_exchanges()
+
+
+@pytest.mark.withoutresponses
+def test_get_real_queue_name(stream_config) -> None:
+    stream_config.QUEUES = {"q1": {}}
+    backend: RabbitMQBackend = get_backend()
+    with mock.patch.object(backend, "channel"):
+        backend.configure_client_queues()
+        assert ":q1" in backend.get_real_queue_name("q1")
+        with pytest.raises(StreamingError, match="Unknown queue .*"):
+            backend.get_real_queue_name("wrong-queue")
 
 
 @pytest.mark.withoutresponses

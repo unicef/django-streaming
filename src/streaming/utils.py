@@ -2,7 +2,6 @@ import datetime
 import json
 import socket
 from typing import TYPE_CHECKING, Any
-from uuid import UUID
 
 from django.core.serializers.json import DjangoJSONEncoder
 from django.db import models

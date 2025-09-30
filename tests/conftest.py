@@ -45,7 +45,8 @@ class ConfigWrapper:
         object.__setattr__(self, "_config", CONFIG)
 
     def __setattr__(self, attr: str, value) -> None:
-        self._to_restore[attr] = getattr(self._config, attr)
+        if attr not in self._to_restore:
+            self._to_restore[attr] = getattr(self._config, attr)
         self._config._cached[attr] = value
 
     def finalize(self):

@@ -6,11 +6,11 @@ from click import ClickException
 from click.testing import CliRunner
 from django.core.exceptions import ImproperlyConfigured
 
-from streaming.__cli__ import cli, assert_backend
+from streaming.__cli__ import assert_backend, cli
 from streaming.backends import get_backend
 from streaming.backends.rabbitmq import RabbitMQBackend
 from streaming.exceptions import AuthorizationError
-from streaming.utils import make_event, json_dumps
+from streaming.utils import json_dumps, make_event
 
 
 @pytest.fixture
@@ -42,9 +42,9 @@ def test_assert_backend(stream_config) -> None:
     stream_config.BROKER_URL = "rabbit://localhost:10000"
     assert assert_backend()
 
+    stream_config.BROKER_URL = "console://"
     with pytest.raises(ClickException, match="RabbitMQ backend is not configured"):
-        stream_config.BROKER_URL = "console://"
-        assert assert_backend()
+        assert_backend()
 
 
 def test_cli_command(runner: CliRunner) -> None:
@@ -90,22 +90,26 @@ def test_listen_wrong_backend(settings, runner: CliRunner, caplog) -> None:
     assert "RabbitMQ backend is not configured" in result.output
 
 
-@pytest.mark.parametrize("args", [(),
-                                  ("--client-name", "name1"),
-                                  ("--payload",),
-                                  ("--pretty",),
-                                  ("--payload", "--pretty"),
-                                  ])
+@pytest.mark.parametrize(
+    "args",
+    [
+        (),
+        ("--client-name", "name1"),
+        ("--payload",),
+        ("--pretty",),
+        ("--payload", "--pretty"),
+    ],
+)
 def test_listen_callback(stream_config, runner: CliRunner, caplog, args) -> None:
     stream_config.BROKER_URL = "rabbit://localhost:10000"
     backend = get_backend()
-    user_callback = MagicMock()
     evt = make_event("")
     with mock.patch("streaming.__cli__.assert_backend") as mocked_assert_backend:
         mocked_assert_backend.return_value = backend
         with mock.patch.object(backend, "listen") as mocked_listen:
-            mocked_listen.side_effect = lambda cb, queues: cb("queue_name", MagicMock(), MagicMock(), MagicMock(),
-                                                              json_dumps(evt).encode())
+            mocked_listen.side_effect = lambda cb, queues: cb(
+                "queue_name", MagicMock(), MagicMock(), MagicMock(), json_dumps(evt).encode()
+            )
             result = runner.invoke(cli, ["listen", *args], catch_exceptions=False)
             assert result.stderr == ""
             assert result.exit_code == 0
@@ -125,9 +129,7 @@ def test_send_wrong_backend(settings, runner: CliRunner) -> None:
     assert "RabbitMQ backend is not configured" in result.output
 
 
-@pytest.mark.parametrize("args", [(),
-                                  ("--client-name", "name1"),
-                                  ("--message", "Test Message")])
+@pytest.mark.parametrize("args", [(), ("--client-name", "name1"), ("--message", "Test Message")])
 def test_send_command(settings, runner: CliRunner, args) -> None:
     settings.STREAMING = {"BROKER_URL": "rabbit://localhost:10000"}
 
