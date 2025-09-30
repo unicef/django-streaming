@@ -57,15 +57,16 @@ def cli() -> None:
 def configure(client_name: str) -> None:
     from streaming.config import CONFIG
 
-    backend: RabbitMQBackend = get_backend()  # type: ignore[assignment]
+    backend: RabbitMQBackend = assert_backend()
     if client_name:
         backend.client_name = client_name
     try:
         backend.connect(True)
         backend.configure_exchanges()
         backend.configure_client_queues()
+        click.secho("Configuration successful.", fg="green")
     except AuthorizationError as e:
-        click.secho(f"Unable to connect using {CONFIG.BROKER_URL}", fg="red")
+        click.secho(f"Unable to connect using {CONFIG.BROKER_URL}", fg="red", err=True)
         raise ClickException(str(e)) from e
 
 

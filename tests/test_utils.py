@@ -1,4 +1,5 @@
 import datetime
+from uuid import uuid4
 
 import pytest
 
@@ -51,7 +52,10 @@ def test_make_event_default_values():
     assert event == {"event": "", "type": "absolute", "payload": {"message": "simple"}}
 
 
-def test_encoding():
-    evt = make_event("", event="user.save")
+def test_encoding(admin_user):
+    uid = uuid4()
+    evt = make_event({"user": admin_user, "uuid": uid, "str": "test"}, event="user.save")
     dump = json_dumps(evt)
-    assert json_loads(dump) == evt
+    restored = json_loads(dump)
+    assert restored["event"] == evt["event"]
+    assert restored["payload"]["uuid"] == str(uid)

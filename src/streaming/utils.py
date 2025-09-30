@@ -21,8 +21,6 @@ class StreamingJSONEncoder(DjangoJSONEncoder):
             return o.isoformat()
         if isinstance(o, models.Model):
             return str(o)
-        if isinstance(o, UUID):
-            return o.hex
         return super().default(o)
 
 
