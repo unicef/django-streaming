@@ -382,6 +382,7 @@ name = "django-streaming"
 source = { editable = "." }
 dependencies = [
     { name = "click" },
+    { name = "colorama" },
     { name = "django" },
     { name = "django-stubs-ext" },
     { name = "markdown" },
@@ -394,6 +395,7 @@ dev = [
     { name = "django-webtest" },
     { name = "factory-boy" },
     { name = "pre-commit" },
+    { name = "pyrabbit2" },
     { name = "pytest" },
     { name = "pytest-cov" },
     { name = "pytest-django" },
@@ -436,6 +438,7 @@ type-check = [
 [package.metadata]
 requires-dist = [
     { name = "click", specifier = ">=8" },
+    { name = "colorama", specifier = ">=0.4.6" },
     { name = "django", specifier = ">=3" },
     { name = "django-stubs-ext" },
     { name = "markdown", specifier = ">=3.8.2" },
@@ -448,6 +451,7 @@ dev = [
     { name = "django-webtest", specifier = ">=1.9.13" },
     { name = "factory-boy", specifier = ">=3.3.3" },
     { name = "pre-commit", specifier = ">=3.3.3" },
+    { name = "pyrabbit2", specifier = ">=1.0.7" },
     { name = "pytest", specifier = ">=8.4.1" },
     { name = "pytest-cov", specifier = ">=6.2.1" },
     { name = "pytest-django", specifier = ">=4.11.1" },
@@ -1410,6 +1414,18 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/19/fd/437901c891f58a7b9096511750247535e891d2d5a5a6eefbc9386a2b41d5/pyproject_api-1.9.1.tar.gz", hash = "sha256:43c9918f49daab37e302038fc1aed54a8c7a91a9fa935d00b9a485f37e0f5335", size = 22710, upload-time = "2025-05-12T14:41:58.025Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/ef/e6/c293c06695d4a3ab0260ef124a74ebadba5f4c511ce3a4259e976902c00b/pyproject_api-1.9.1-py3-none-any.whl", hash = "sha256:7d6238d92f8962773dd75b5f0c4a6a27cce092a14b623b811dba656f3b628948", size = 13158, upload-time = "2025-05-12T14:41:56.217Z" },
+]
+
+[[package]]
+name = "pyrabbit2"
+version = "1.0.7"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "requests" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/8b/db/df9e7ba2cfedbe41eb06384affa4687b5ded14f633c0b2765f78c8c0b443/pyrabbit2-1.0.7.tar.gz", hash = "sha256:d27160cb35c096f0072df57307233d01b117a451236e136604a8e51be6f106c0", size = 11533, upload-time = "2019-01-24T11:49:13.946Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/d2/38/e5de737bc5a1b556ed4f3086f14eceb4b62c637957907c0d37df6585a112/pyrabbit2-1.0.7-py3-none-any.whl", hash = "sha256:9c5ac7751781705083f893c6aec0909b2ee0ad28e373e4fdbde6231172d64504", size = 12045, upload-time = "2019-01-24T11:49:12.511Z" },
 ]
 
 [[package]]

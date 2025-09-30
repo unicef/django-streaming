@@ -67,18 +67,38 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 STREAMING = {
     "BROKER_URL": os.environ.get("BROKER_URL", "console://"),
     "MANAGER_CLASS": "streaming.manager.ChangeManager",
+    "QUEUES": {
+        "default": {
+            "routing": ["*"],
+        },
+        "security": {"routing": ["user.*", "group.*"]},
+        "payments": {"routing": ["plan.*"]},
+    },
     "DEBUG": True,
 }
-LOGGING = {}
 
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "handlers": {
+        "console": {"class": "logging.StreamHandler"},
+        "null": {"class": "logging.NullHandler"},
+    },
+    "root": {
+        "handlers": ["null"],
+        "level": "CRITICAL",
+    },
+    "loggers": {
+        "django": {"handlers": ["console"], "level": "CRITICAL"},
+        "faker": {"handlers": ["null"], "level": "CRITICAL"},
+        # "streaming": {"handlers": ["console"], "level": "DEBUG"},
+        "pika": {"handlers": ["null"], "level": "DEBUG", "propagate": False},
+    },
+}
 # LOGGING = {
 #     "version": 1,
 #     "disable_existing_loggers": False,
 #     "formatters": {
-#         # "verbose": {
-#         #     "format": "{levelname} {asctime} {module} {process:d} {thread:d} {message}",
-#         #     "style": "{",
-#         # },
 #         "simple": {
 #             "format": "{levelname} {message}",
 #             "style": "{",

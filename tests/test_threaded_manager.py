@@ -29,7 +29,8 @@ def test_register(manager: ThreadedChangeManager):
 
 
 def test_notify(manager: ThreadedChangeManager):
-    manager.notify(make_event("test"))
+    manager.notify(make_event("test"), "a.b")
+    manager.stop()
     assert manager.backend.messages
 
 
@@ -38,13 +39,13 @@ def test_lifecycle(manager: ThreadedChangeManager):
     User.objects.create(username="test")
     assert len(manager.backend.messages) == 1
     msg = manager.backend.messages[-1]
-    assert msg["event"] == "post_save"
-    assert msg["domain"] == User._meta.app_label
-    assert msg["payload"]["created"]
+    assert msg[0] == "auth.user.save"
+    assert msg[1]["event"] == "auth.user.save"
+    assert msg[1]["payload"]["created"]
 
 
 def test_stop(manager: ThreadedChangeManager):
     manager.register(User)
-    manager.notify(make_event("test"))
+    manager.notify(make_event("test"), "a.b")
     manager.stop()
     assert not manager.thread.is_alive()

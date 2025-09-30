@@ -2,10 +2,6 @@
 
 `django-streaming` provides a command-line interface (CLI) built with `click` to help you interact with the streaming system, especially for testing and debugging.
 
-## Installation
-
-The CLI is installed automatically when you install `django-streaming`. You can run it using the `stream` command.
-
 ## Basic Usage
 
 To see the available commands, run:
@@ -14,44 +10,71 @@ To see the available commands, run:
 stream --help
 ```
 
-## RabbitMQ Commands
+This will show you the main commands: `listen`, `send`, `purge`, and `check`.
 
-The `rabbit` group provides commands for interacting with RabbitMQ.
+## `listen`
 
-### `stream rabbit send`
-
-Sends a message to a RabbitMQ exchange.
+The `listen` command allows you to listen for messages from one or more RabbitMQ queues configured in your `settings.py`.
 
 ```bash
-stream rabbit send --help
+stream listen --help
 ```
 
 **Options:**
 
-*   `--message TEXT`: The message to send. Can be a plain string or a JSON string.
-*   `--domain TEXT`: An optional domain name to associate with the message.
+*   `--queues TEXT`: (option, multiple) The alias of the queue to listen to. You can specify this option multiple times to listen to multiple queues. If not provided, it will listen to all queues defined in `STREAMING['QUEUES']`.
+*   `--payload`: (flag) Print the message payload.
+*   `--autoreload`: (flag) Enable auto-reloading for development.
+*   `--pretty`: (flag) Pretty-print the JSON payload.
 
 **Example:**
 
 ```bash
-stream rabbit send --message "Hello from CLI!" --domain "my-app"
+stream listen --queues invoices --pretty
 ```
 
-### `stream rabbit listen`
+This command will listen to the queue with the alias `invoices` and pretty-print the payload.
 
-Listens for messages from a RabbitMQ queue.
+## `send`
+
+The `send` command sends a message to a RabbitMQ exchange with a specific routing key.
 
 ```bash
-stream rabbit listen --help
+stream send --help
 ```
+
+**Arguments:**
+
+*   `ROUTING_KEY`: (required) The routing key for the message.
 
 **Options:**
 
-*   `--name TEXT`: An optional consumer name. If not provided, a random name will be generated.
-*   `--domain TEXT`: An optional domain name to filter messages by.
+*   `--message TEXT`: The message to send. Can be a plain string or a JSON string. Defaults to "Test Message".
 
 **Example:**
 
 ```bash
-stream rabbit listen --name "my-consumer" --domain "my-app"
+stream send fattura.emessa --message '''{"amount": 100, "customer": "Acme Corp"}'''
+```
+
+## `purge`
+
+The `purge` command purges all messages from all queues configured in `STREAMING['QUEUES']`.
+
+```bash
+stream purge --help
+```
+
+**Example:**
+
+```bash
+stream purge
+```
+
+## `check`
+
+The `check` command displays the current `django-streaming` configuration and checks the connection to the message broker.
+
+```bash
+stream check
 ```

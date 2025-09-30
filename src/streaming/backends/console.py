@@ -13,11 +13,12 @@ if TYPE_CHECKING:
 class ConsoleBackend(BaseBackend):
     def __init__(self, url: str) -> None:
         super().__init__(url)
-        self.stream = self._options.get("streams", "stdout")
+        self.stream = self.get_option("stream", "stdout")
 
-    def publish(self, message: "EventType", **kwargs: Any) -> None:
+    def publish(self, routing_key: str, message: "EventType") -> bool:
         stream = getattr(sys, self.stream)
-        stream.write(f"{message}\n")
+        stream.write(f"routing_key:{routing_key} message:{message}\n")
+        return True
 
     def listen(self, **kwargs: Any) -> None:
         pass

@@ -51,6 +51,7 @@ jobs:
         image: rabbitmq:3-management
         ports:
           - 10000:5672
+          - 10001:15672
     strategy:
       fail-fast: false
       matrix:

@@ -2,14 +2,11 @@ import logging
 from typing import TYPE_CHECKING, Any
 from urllib.parse import ParseResult, parse_qs, urlparse
 
-from streaming.config import DEFAULT_QUEUE_NAME
-
-logger = logging.getLogger(__name__)
-
 if TYPE_CHECKING:
     from streaming.types import EventType
 
-not_provided = object()
+
+logger = logging.getLogger(__name__)
 
 
 class BaseBackend:
@@ -17,10 +14,10 @@ class BaseBackend:
         self.connection_url: str = url
         self._parsed_url: ParseResult = urlparse(self.connection_url)
         self._options = {k: v[0] for k, v in parse_qs(self._parsed_url.query).items()}
-        self.queue_name: str = self._options.pop("queue", DEFAULT_QUEUE_NAME)
 
-    def initialize(self) -> None:
-        pass
+    def get_option(self, name: str, default: Any = "") -> Any:
+        return self._options.get(name, default)
 
-    def publish(self, message: "EventType", **kwargs: Any) -> None:
-        raise NotImplementedError()
+    def connect(self, raise_if_error: bool = False) -> None: ...
+    def publish(self, routing_key: str, message: "EventType") -> bool:
+        return False

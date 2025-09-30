@@ -1,5 +1,11 @@
+import datetime
+import json
 import socket
 from typing import TYPE_CHECKING, Any
+from uuid import UUID
+
+from django.core.serializers.json import DjangoJSONEncoder
+from django.db import models
 
 if TYPE_CHECKING:
     from streaming.types import JSON, EventType
@@ -9,18 +15,53 @@ HOUR = MINUTE * 60
 DAY = HOUR * 24
 
 
+class StreamingJSONEncoder(DjangoJSONEncoder):
+    def default(self, o: Any) -> Any:
+        if isinstance(o, datetime.datetime):
+            return o.isoformat()
+        if isinstance(o, models.Model):
+            return str(o)
+        if isinstance(o, UUID):
+            return o.hex
+        return super().default(o)
+
+
+def json_dumps(obj: Any) -> str:
+    return json.dumps(obj, cls=StreamingJSONEncoder)
+
+
+def json_loads(obj: str) -> "JSON":
+    def try_parse_iso(value: Any) -> Any:
+        if isinstance(value, str):
+            try:
+                return datetime.datetime.fromisoformat(value)
+            except ValueError:
+                return value
+        return value
+
+    def hook(dct: "JSON") -> Any:
+        return {k: try_parse_iso(v) for k, v in dct.items()}
+
+    return json.loads(obj, object_hook=hook)  # type: ignore[no-any-return]
+
+
 def parse_bool(value: Any) -> bool:
     if isinstance(value, str):
         return value.lower() in ("yes", "true", "1", "y", "t")
     return value in [1, True]
 
 
-def make_event(message: "str | JSON", *, event: str = "", domain: str = "") -> "EventType":
+def make_event(message: "str | JSON", *, event: str = "") -> "EventType":
     if isinstance(message, str):
         payload: JSON = {"message": message}
     else:
         payload = message
-    return {"event": event, "domain": domain, "payload": payload}
+    return {
+        "event": event,
+        "type": "absolute",
+        "timestamp": datetime.datetime.now(),
+        "payload": payload,
+    }
 
 
 def get_local_ip() -> str:

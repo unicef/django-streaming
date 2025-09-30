@@ -1,11 +1,8 @@
-from typing import TYPE_CHECKING
+import datetime
 
 import pytest
 
-from streaming.utils import make_event, parse_bool
-
-if TYPE_CHECKING:
-    from streaming.types import JSON
+from streaming.utils import json_dumps, json_loads, make_event, parse_bool
 
 
 @pytest.mark.parametrize(
@@ -33,17 +30,28 @@ def test_parse_bool(value: str, expected: bool) -> None:
     assert parse_bool(value) == expected
 
 
-def test_make_event_with_string_message() -> None:
-    event = make_event("hello", event="test_event", domain="test_domain")
-    assert event == {"event": "test_event", "domain": "test_domain", "payload": {"message": "hello"}}
+def test_make_event_with_string_message():
+    event = make_event("hello", event="test_event")
+    assert isinstance(event["timestamp"], datetime.datetime)
+    del event["timestamp"]
+    assert event == {"event": "test_event", "type": "absolute", "payload": {"message": "hello"}}
 
 
-def test_make_event_with_json_message() -> None:
-    json_message: JSON = {"key": "value", "number": 123}
-    event = make_event(json_message, event="json_event", domain="json_domain")
-    assert event == {"event": "json_event", "domain": "json_domain", "payload": {"key": "value", "number": 123}}
+def test_make_event_with_json_message():
+    event = make_event({"key": "value", "number": 123}, event="json_event")
+    assert isinstance(event["timestamp"], datetime.datetime)
+    del event["timestamp"]
+    assert event == {"event": "json_event", "type": "absolute", "payload": {"key": "value", "number": 123}}
 
 
-def test_make_event_default_values() -> None:
+def test_make_event_default_values():
     event = make_event("simple")
-    assert event == {"event": "", "domain": "", "payload": {"message": "simple"}}
+    assert isinstance(event["timestamp"], datetime.datetime)
+    del event["timestamp"]
+    assert event == {"event": "", "type": "absolute", "payload": {"message": "simple"}}
+
+
+def test_encoding():
+    evt = make_event("", event="user.save")
+    dump = json_dumps(evt)
+    assert json_loads(dump) == evt

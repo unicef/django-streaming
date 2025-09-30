@@ -16,8 +16,36 @@ The `django-streaming` library can be configured via the `STREAMING` dictionary 
 *   **`RETRY_DELAY`** (int, default: `1`):
     The delay in seconds between retry attempts when connecting to the message broker.
 
+*   **`MESSAGE_TTL`** (int, default: `172800` seconds, i.e. 2 days):
+    The maximum time a message can live in a queue before being discarded. The value is in seconds.
+
 *   **`MANAGER_CLASS`** (string, default: `"streaming.manager.ChangeManager"`):
     The Python path to the `ChangeManager` class to be used. You can switch to the threaded manager by setting this to `"streaming.threaded.ThreadedChangeManager"`.
+
+*   **`QUEUES`** (dict, default: `{}`):
+    A dictionary to configure the queues. The keys are queue aliases, and the values are dictionaries with queue parameters.
+
+    Example:
+    ```python
+    STREAMING = {
+        "QUEUES": {
+            "invoices": {
+                "name": "invoices_queue",
+                "binding_keys": ["invoices.*"],
+                "options": {"x-message-ttl": 60000}
+            },
+            "orders": {
+                "name": "orders_queue",
+                "binding_keys": ["orders.*"],
+            }
+        }
+    }
+    ```
+
+    For each queue, you can specify:
+    *   `name`: The actual queue name on the broker. If not provided, the alias is used as the name.
+    *   `binding_keys`: A list of routing keys to bind the queue to the exchange.
+    *   `options`: A dictionary of arguments to pass to the `queue_declare` method of the backend. This can be used to set queue properties like `x-message-ttl`.
 
 ## RabbitMQ Specific Settings
 

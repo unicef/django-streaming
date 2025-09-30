@@ -34,22 +34,51 @@ Additionally, the connection will be gracefully closed when the Python process t
 
 You can assign a custom name to your RabbitMQ connection, which will be visible in the RabbitMQ management interface. This can be useful for monitoring and debugging. Configure the `CONNECTION_NAME` setting in your `STREAMING` dictionary:
 
-## Usage
+## Queue Configuration
 
-Once configured, you can publish messages using the `manager.publish()` method. These messages will be sent to the configured RabbitMQ queue.
+With the RabbitMQ backend, you can define multiple queues with different bindings and properties. This is done in your `settings.py` via the `STREAMING['QUEUES']` dictionary.
+
+Example `settings.py` configuration:
+
+```python
+STREAMING = {
+    "BROKER_URL": "amqp://guest:guest@localhost:5672/",
+    "QUEUES": {
+        "invoices": {
+            "name": "invoices_queue",
+            "binding_keys": ["invoices.*"],
+            "options": {"x-message-ttl": 60000}
+        },
+        "orders": {
+            "name": "orders_queue",
+            "binding_keys": ["orders.*"],
+        }
+    }
+}
+```
+
+For each queue, you can specify:
+*   `name`: The actual queue name on the broker. If not provided, the alias is used as the name.
+*   `binding_keys`: A list of routing keys to bind the queue to the exchange.
+*   `options`: A dictionary of arguments to pass to the `queue_declare` method of the backend. This can be used to set queue properties like `x-message-ttl`.
+
+## Listening for messages
+
+To listen for messages, you can use the `stream listen` command line interface. See the [CLI documentation](cli.md) for more details.
+
+If you need to listen for messages from your code, you can use the `manager.listen()` method.
 
 ```python
 from streaming.manager import manager
 
-manager.publish("Hello from RabbitMQ Backend!")
+def my_callback(ch, method, properties, body):
+    print(f"Received message: {body}")
+
+# Listen to all configured queues
+manager.listen(callback=my_callback)
+
+# Listen to a specific queue (by alias)
+manager.listen(callback=my_callback, queues=["invoices"])
 ```
 
-## Queue Name
-
-By default, messages are published to a queue named `django_model_changes`. You can customize this queue name in your `STREAMING` settings by adding the `queue` parameter to the `BROKER_URL`:
-
-```python
-STREAMING = {
-    "BROKER_URL": "amqp://guest:guest@localhost:5672/?queue=my_custom_queue",
-}
-```
+The `listen` method of the `RabbitMQBackend` now takes a `callback` function and an optional list of queue aliases to listen to. If no queues are specified, it will listen to all queues configured in `STREAMING['QUEUES']`.
