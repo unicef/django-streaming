@@ -22,11 +22,15 @@ logger = logging.getLogger(__name__)
 
 
 def _dump_info(backend: "RabbitMQBackend") -> None:
+    from streaming.config import CONFIG
+
     line = f"{Fore.YELLOW}%-16s: {Style.RESET_ALL}%s"
     click.secho(line % ("Server", f"{backend.host}:{backend.port}"))
     click.secho(line % ("VirtualHost", f"{backend.virtual_host}"))
     click.secho(line % ("Exchange", f"{backend.exchange}"))
-    click.secho(line % ("Queue", f"{backend.queues}"))
+    click.secho(line % ("Queues", ""))
+    for alias, config in CONFIG.QUEUES.items():
+        click.secho(line % (f"   {alias}", f"{config}"))
     click.secho(line % ("Timeout", f"{backend.timeout}"))
     click.secho(line % ("Client Name", f"{backend.client_name}"))
 
@@ -63,10 +67,13 @@ def configure(client_name: str) -> None:
     try:
         backend.connect(True)
         backend.configure_exchanges()
-        backend.configure_client_queues()
-        click.secho("Configuration successful.", fg="green")
+        backend.configure_queue_routing()
+        check.callback()  # type: ignore[misc]
     except AuthorizationError as e:
         click.secho(f"Unable to connect using {CONFIG.BROKER_URL}", fg="red", err=True)
+        raise ClickException(str(e)) from e
+    except StreamingConfigError as e:
+        click.secho(f"Generic error {e}", fg="red", err=True)
         raise ClickException(str(e)) from e
 
 
@@ -74,8 +81,15 @@ def configure(client_name: str) -> None:
 @click.argument("routing_key")
 @click.option("-c", "--client-name", default=None, help="Override client name")
 @click.option("--message", default="Test Message", help="Message to send")
-def send(routing_key: str, message: str, client_name: str) -> None:
+@click.option("--debug", is_flag=True, help="Debug mode")
+def send(routing_key: str, message: str, client_name: str, debug: bool) -> None:
     backend = assert_backend()
+    logger = logging.getLogger("streaming")
+    if debug:
+        logger.setLevel(logging.DEBUG)
+        logger.addHandler(logging.StreamHandler())
+    else:
+        logger.handlers = []
 
     if client_name:
         backend.client_name = client_name
@@ -96,9 +110,6 @@ def _listen(queues: list[str], payload: bool, pretty: bool, client_name: str) ->
 
     if client_name:
         backend.client_name = client_name
-    backend.connect()
-    backend.configure_client_queues()
-    _dump_info(backend)
 
     def callback(
         queue_name: str, ch: BlockingChannel, method: Basic.Deliver, properties: BasicProperties, body: bytes
@@ -119,9 +130,11 @@ def _listen(queues: list[str], payload: bool, pretty: bool, client_name: str) ->
             click.echo(f"{Fore.YELLOW}{extra}{Fore.RESET}")
 
     try:
+        backend.connect()
+        _dump_info(backend)
         backend.listen(callback, queues=queues)
     except KeyboardInterrupt:
-        click.secho("\nStopping listener.", fg="yellow")
+        click.secho("Stopping listener.", fg="yellow")
     finally:
         backend.disconnect()
 
@@ -155,17 +168,14 @@ def purge() -> None:
     if not isinstance(backend, RabbitMQBackend):
         raise click.ClickException("RabbitMQ backend is not configured. Please set BROKER_URL to a rabbit:// URL.")
 
-    backend.connect()
-    if backend.channel:
-        for queue_alias, queue_config in CONFIG.QUEUES.items():
-            queue_name = queue_config.get("name", queue_alias)
-            try:
-                message_count = backend.channel.queue_purge(queue_name)
-                click.secho(
-                    f"Purged {message_count.method.message_count} messages from queue '{queue_name}'.", fg="green"
-                )
-            except ChannelClosedByBroker:
-                click.secho(f"Could not purge queue '{queue_name}'. Queue may not exist.", fg="red")
+    backend.connect(True)
+    for queue_alias, queue_config in CONFIG.QUEUES.items():
+        queue_name = queue_config.get("name", queue_alias)
+        try:
+            message_count = backend.channel.queue_purge(queue_name)  # type: ignore[union-attr]
+            click.secho(f"Purged {message_count.method.message_count} messages from queue '{queue_name}'.", fg="green")
+        except ChannelClosedByBroker:
+            click.secho(f"Could not purge queue '{queue_name}'. Queue may not exist.", fg="red")
     backend.disconnect()
 
 
@@ -174,18 +184,15 @@ def check() -> None:
     """Checks the streaming configuration and connection."""
     from streaming.config import CONFIG
 
-    click.secho("System Configuration:", bold=True)
+    click.secho("System Configuration:")
     config_dict = dict(CONFIG._parsed)
     for key, value in config_dict.items():
         click.echo(f"  {key}: {value}")
 
-    click.secho("Backend Configuration:", bold=True)
-    backend: RabbitMQBackend = get_backend()  # type: ignore[assignment]
-    _dump_info(backend)
-
-    click.secho("\nChecking connection...", bold=True)
+    backend: RabbitMQBackend = assert_backend()
     try:
-        backend.connect(raise_if_error=True)
+        backend.connect(True)
         click.secho("Connection successful.", fg="green")
+        _dump_info(backend)
     except (StreamingConfigError, AuthorizationError) as e:
         raise ClickException(f"Connection failed: {e}") from e

@@ -5,6 +5,8 @@ from typing import TYPE_CHECKING, Any
 
 from django.core.serializers.json import DjangoJSONEncoder
 from django.db import models
+from pika.adapters.blocking_connection import BlockingChannel
+from pika.exceptions import ChannelClosedByBroker
 
 if TYPE_CHECKING:
     from streaming.types import JSON, EventType
@@ -66,3 +68,11 @@ def get_local_ip() -> str:
     s.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
     s.connect(("<broadcast>", 12345))  # 12345 is random port. 0 fails on Mac.
     return str(s.getsockname()[0])
+
+
+def exchange_exists(channel: BlockingChannel | None, exchange_name: str) -> bool:
+    try:
+        channel.exchange_declare(exchange=exchange_name, passive=True)  # type: ignore[union-attr]
+        return True
+    except (ChannelClosedByBroker, AttributeError):
+        return False

@@ -41,7 +41,7 @@ class ChangeManager:
         self.notify(routing_key, message)
 
     def notify(self, routing_key: str, event: "EventType") -> bool:
-        logger.debug("notifying %s", event)
+        logger.debug("notifying [%s] %s", routing_key, event)
         return self.backend.publish(routing_key, event)
 
 

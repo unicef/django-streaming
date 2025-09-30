@@ -1,13 +1,13 @@
 import logging
 import sys
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from ._base import BaseBackend
 
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
-    from ..types import EventType
+    from ..types import EventType, UserCallback
 
 
 class ConsoleBackend(BaseBackend):
@@ -20,8 +20,11 @@ class ConsoleBackend(BaseBackend):
         stream.write(f"routing_key:{routing_key} message:{message}\n")
         return True
 
-    def listen(self, **kwargs: Any) -> None:
+    def listen(self, callback: "UserCallback", queues: list[str] | None = None, ack: bool = True) -> None:
         pass
 
     def connect(self, raise_if_error: bool = False) -> None:
+        pass
+
+    def disconnect(self) -> None:
         pass

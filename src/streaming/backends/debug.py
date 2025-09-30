@@ -1,12 +1,12 @@
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from ._base import BaseBackend
 
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
-    from ..types import EventType
+    from ..types import EventType, UserCallback
 
 
 class DebugBackend(BaseBackend):
@@ -14,10 +14,13 @@ class DebugBackend(BaseBackend):
         super().__init__(url)
         self.messages: list[tuple[str, EventType]] = []
 
-    def listen(self, **kwargs: Any) -> None:
+    def listen(self, callback: "UserCallback", queues: list[str] | None = None, ack: bool = True) -> None:
         pass
 
     def connect(self, raise_if_error: bool = False) -> None:
+        pass
+
+    def disconnect(self) -> None:
         pass
 
     def publish(self, routing_key: str, message: "EventType") -> bool:

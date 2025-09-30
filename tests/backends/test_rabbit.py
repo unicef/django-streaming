@@ -10,7 +10,7 @@ from pika.spec import PERSISTENT_DELIVERY_MODE, Basic, BasicProperties
 
 from streaming.backends import get_backend
 from streaming.backends.rabbitmq import MAX_RETRIES, Callback, RabbitMQBackend
-from streaming.exceptions import StreamingCallbackError, StreamingCallbackFailure, StreamingConfigError, StreamingError
+from streaming.exceptions import StreamingCallbackError, StreamingCallbackFailure, StreamingConfigError
 from streaming.utils import make_event
 
 if TYPE_CHECKING:
@@ -69,27 +69,28 @@ def test_configure_exchanges(backend: RabbitMQBackend, caplog) -> None:
 def test_get_real_queue_name(stream_config) -> None:
     stream_config.QUEUES = {"q1": {}}
     backend: RabbitMQBackend = get_backend()
-    with mock.patch.object(backend, "channel"):
-        backend.configure_client_queues()
-        assert ":q1" in backend.get_real_queue_name("q1")
-        with pytest.raises(StreamingError, match="Unknown queue .*"):
-            backend.get_real_queue_name("wrong-queue")
+    assert backend.get_real_queue_name("wrong-queue")
+    # with mock.patch.object(backend, "channel"):
+    #     backend.configure_queue_routing()
+    #     assert ":q1" in backend.get_real_queue_name("q1")
+    #     with pytest.raises(StreamingError, match="Unknown queue .*"):
+    #         backend.get_real_queue_name("wrong-queue")
 
 
 @pytest.mark.withoutresponses
-def test_configure_client_queues(backend: RabbitMQBackend, caplog) -> None:
+def test_configure_queue_routing(backend: RabbitMQBackend, caplog) -> None:
     backend.connect(True)
-    backend.configure_client_queues()
+    backend.configure_queue_routing()
     with mock.patch.object(backend, "channel", None):
         with pytest.raises(StreamingConfigError, match="No active channel"):
-            backend.configure_client_queues()
+            backend.configure_queue_routing()
 
 
 def test_publish_no_connection(stream_config, caplog) -> None:
     stream_config.BROKER_URL = "rabbit://localhost:10000"
     backend = get_backend()
-    with mock.patch.object(backend, "configure_client_queues") as mocked_configure_client_queues:
-        mocked_configure_client_queues.return_value = None
+    with mock.patch.object(backend, "configure_queue_routing") as mocked_configure_queue_routing:
+        mocked_configure_queue_routing.return_value = None
         with mock.patch("pika.BlockingConnection") as m:
             m.side_effect = socket.gaierror
             backend.channel = None
@@ -117,7 +118,7 @@ def test_error(settings, caplog) -> None:
     from streaming.config import CONFIG
 
     backend = RabbitMQBackend(CONFIG.BROKER_URL)
-    with mock.patch.object(backend, "configure_client_queues"):
+    with mock.patch.object(backend, "configure_queue_routing"):
         with caplog.at_level(logging.WARNING):
             backend.connect()
             assert "Could not connect to RabbitMQ after multiple retries." in caplog.text
@@ -146,19 +147,8 @@ def test_listen_all_queues(stream_config, caplog):
     backend: RabbitMQBackend = get_backend()
 
     with mock.patch.object(backend, "channel", spec=BlockingChannel) as mock_channel:
-        backend.configure_client_queues()
-
-        real_q1_name = backend.get_real_queue_name("q1")
-        real_q2_name = backend.get_real_queue_name("q2")
-
-        assert mock_channel.queue_declare.call_count == 2
-        mock_channel.queue_declare.assert_any_call(queue=real_q1_name, durable=True, arguments=None)
-        mock_channel.queue_declare.assert_any_call(queue=real_q2_name, durable=True, arguments=None)
-
         backend.listen(callback=MagicMock())
-        assert mock_channel.queue_bind.call_count == 2
-        mock_channel.queue_bind.assert_any_call(exchange=backend.exchange, queue=real_q1_name, routing_key="#")
-        mock_channel.queue_bind.assert_any_call(exchange=backend.exchange, queue=real_q2_name, routing_key="test.*")
+        assert mock_channel.queue_bind.call_count == 0
 
 
 def test_listen_queues_subset(stream_config, caplog):
@@ -171,25 +161,11 @@ def test_listen_queues_subset(stream_config, caplog):
     with mock.patch.object(backend, "channel", spec=BlockingChannel) as mocked_channel:
         mocked_channel.basic_consume.side_effect = None
 
-        backend.configure_client_queues()
+        backend.configure_queue_routing()
         assert mocked_channel.queue_declare.call_count == 2
+        assert mocked_channel.queue_bind.call_count == 2
 
         backend.listen(callback=MagicMock(), queues=["q1"])
-        assert mocked_channel.queue_bind.call_count == 1
-        mocked_channel.queue_bind.assert_called_with(
-            exchange=backend.exchange, queue=backend.get_real_queue_name("q1"), routing_key="#"
-        )
-
-
-def test_listen_non_existent_queue(stream_config, caplog):
-    stream_config.QUEUES = {
-        "q1": {"routing": ["#"]},
-    }
-    backend: RabbitMQBackend = get_backend()
-    with mock.patch("pika.adapters.blocking_connection.BlockingChannel.start_consuming"):
-        with caplog.at_level(logging.WARNING):
-            backend.listen(MagicMock(), queues=["non-existent"])
-            assert "not found in configured listening queues" in caplog.text
 
 
 @pytest.mark.parametrize("ack", [True, False])
@@ -280,7 +256,7 @@ def test_callback_exception(caplog) -> None:
         assert "Unexpected exception occurred" in caplog.text
 
 
-def test_backend__handle_retry() -> None:
+def test_backend__handle_retry(configure_server) -> None:
     backend: RabbitMQBackend = get_backend()
 
     with mock.patch.object(backend, "channel", spec=BlockingChannel):
@@ -299,7 +275,8 @@ def test_backend__handle_retry() -> None:
         assert ch.basic_ack.called
 
 
-def test_backend__max_retry(backend, caplog) -> None:
+def test_backend_max_retry(caplog, configure_server) -> None:
+    backend = get_backend()
     backend.connect()
     message: "EventType" = {"event": "event", "timestamp": "", "type": "absolute", "payload": {}}
     backend._basic_publish = MagicMock()

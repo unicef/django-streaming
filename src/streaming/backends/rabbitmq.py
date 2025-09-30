@@ -1,4 +1,3 @@
-import atexit
 import json
 import logging
 import socket
@@ -12,20 +11,19 @@ from pika.exceptions import ConnectionClosedByBroker, ConnectionWrongStateError
 from pika.exchange_type import ExchangeType
 
 from streaming.config import CONFIG
-from streaming.utils import get_local_ip
+from streaming.utils import exchange_exists
 
 from ..exceptions import (
     AuthorizationError,
     StreamingCallbackError,
     StreamingCallbackFailure,
     StreamingConfigError,
-    StreamingError,
 )
 from ..utils import json_dumps
 from ._base import BaseBackend
 
 if TYPE_CHECKING:
-    from pika.adapters.blocking_connection import BlockingChannel, BlockingConnection
+    from pika.adapters.blocking_connection import BlockingChannel
     from pika.spec import Basic, BasicProperties
 
     from streaming.types import EventType, UserCallback
@@ -66,47 +64,23 @@ class Callback:
 class RabbitMQBackend(BaseBackend):
     def __init__(self, url: str) -> None:
         super().__init__(url)
-        self.host = str(self._parsed_url.hostname)
-        self.port = int(self._parsed_url.port) if self._parsed_url.port else 5672
-        self._connection: BlockingConnection | None = None
-        self._username = self._parsed_url.username or "guest"
-        self._password = self._parsed_url.password or "guest"
 
-        self.channel: BlockingChannel | None = None
-        self.exchange = self.get_option("exchange", "django-streaming-broadcast")
-        self.retry_exchange = f"retry_{self.exchange}"
-        self.timeout = float(self.get_option("timeout", 0.5))
-        self.virtual_host = self.get_option("vhost", "/")
-        # listener
-        self.client_name = CONFIG.CLIENT_NAME or get_local_ip()
-        self._queue_mapping: dict[str, str] = {}
-        atexit.register(self.disconnect)
-
-    @property
-    def client_name(self) -> str:
-        return self.__client_name
-
-    @client_name.setter
-    def client_name(self, name: str) -> None:
-        self.__client_name = name
-
-    def initialize(self) -> None:
-        pass
-
-    @property
-    def queues(self) -> list[str]:
-        return list(self._queue_mapping.keys())
+    def check_channel(self) -> None:
+        if not self.channel:
+            raise StreamingConfigError("No active channel")
 
     def configure_exchanges(self) -> None:
+        logger.debug("Configuring exchanges")
         if not self.channel:
             raise StreamingConfigError("No active channel")
         unrouted_exchange = f"{self.exchange}_unrouted"
         dead_letter_queue = f"{self.exchange}_unrouted_queue"
-
+        logger.debug(f"Declaring exchange '{unrouted_exchange}'")
         self.channel.exchange_declare(exchange=unrouted_exchange, exchange_type=ExchangeType.fanout, durable=True)
         self.channel.queue_declare(queue=dead_letter_queue, durable=True)
         self.channel.queue_bind(exchange=unrouted_exchange, queue=dead_letter_queue)
 
+        logger.debug(f"Declaring exchange '{self.exchange}'")
         self.channel.exchange_declare(
             exchange=self.exchange,
             exchange_type=ExchangeType.topic,
@@ -115,28 +89,21 @@ class RabbitMQBackend(BaseBackend):
         )
         self.channel.exchange_declare(self.retry_exchange, exchange_type=ExchangeType.direct, durable=True)
 
-    def configure_client_queues(self) -> None:
-        if not self.channel:
-            raise StreamingConfigError("No active channel")
+    def configure_queue_routing(self) -> None:
+        self.check_channel()
+        if not exchange_exists(self.channel, self.exchange):
+            raise StreamingConfigError("Exchange not found")
+
         for alias, config in CONFIG.QUEUES.items():
-            real_name = f"{self.client_name}:{config.get('name', alias)}"
+            real_name = self.get_real_queue_name(alias)
             logger.debug(f"Declaring queue '{real_name}'")
-            self.channel.queue_declare(queue=real_name, durable=True, arguments=None)
-            self._queue_mapping[alias] = real_name
+            self.channel.queue_declare(queue=real_name, durable=True, arguments=None)  # type: ignore[union-attr]
+            binding_keys = config.get("routing", [])
+            for binding_key in binding_keys:
+                logger.debug("Listening on queue '%s' routed by '%s'", alias, binding_key)
+                self.channel.queue_bind(exchange=self.exchange, queue=real_name, routing_key=binding_key)  # type: ignore[union-attr]
 
-    def get_real_queue_name(self, name: str) -> str:
-        try:
-            return self._queue_mapping[name]
-        except KeyError as e:
-            raise StreamingError(f"Unknown queue '{name}'. Valid values are: {self.queues}") from e
-
-    def set_credential(self, username: str, password: str) -> None:
-        if self._connection:
-            raise StreamingError("Disconnect first.")
-        self.__username = username
-        self.__password = password
-
-    def _connect(self, raise_if_error: bool = False) -> None:
+    def connect(self, raise_if_error: bool = False) -> None:
         logger.debug("Connecting to %s:%s", self.host, self.port)
         if self._connection and self._connection.is_open:
             self.disconnect()
@@ -178,10 +145,6 @@ class RabbitMQBackend(BaseBackend):
                     raise StreamingConfigError(f"Error connecting {self.connection_url}") from e
         logger.critical("Could not connect to RabbitMQ after multiple retries.")
 
-    def connect(self, raise_if_error: bool = False) -> None:
-        self._connect(raise_if_error)
-        self.configure_client_queues()
-
     def disconnect(self) -> None:
         try:
             if self._connection:
@@ -196,7 +159,7 @@ class RabbitMQBackend(BaseBackend):
     # Publisher
     def publish(self, routing_key: str, message: "EventType") -> bool:
         try:
-            if not self.channel:
+            if not self.channel or self.channel.is_closed:
                 self.connect(True)
             logger.debug(f"Publishing to exchange '{self.exchange}' using routing key '{routing_key}'")
             self._basic_publish(message, routing_key, 0)
@@ -208,9 +171,8 @@ class RabbitMQBackend(BaseBackend):
     # Listener
 
     def _basic_publish(self, message: "EventType", routing_key: str, retry_count: int = 0) -> None:
-        if not self.channel:
-            raise StreamingConfigError("No active channel")
-        self.channel.basic_publish(
+        self.check_channel()
+        self.channel.basic_publish(  # type: ignore[union-attr]
             exchange=self.exchange,
             routing_key=routing_key,
             body=json_dumps(message).encode(),
@@ -241,37 +203,23 @@ class RabbitMQBackend(BaseBackend):
         else:
             logger.error(f"Dropping after {MAX_RETRIES} retries")
 
-    def listen(
-        self,
-        callback: "UserCallback",
-        queues: list[str] | None = None,
-        ack: bool = True,
-    ) -> None:
+    def listen(self, callback: "UserCallback", queues: list[str] | None = None, ack: bool = True) -> None:
         if self.channel is None:
             self.connect()
-        if not self.channel:
-            raise StreamingConfigError("No active channel")
-        self.configure_client_queues()
+        self.check_channel()
+
         configured_queues = CONFIG.QUEUES
         if not configured_queues:
             logger.warning("No queues configured in settings.STREAMING['QUEUES']")
             return
-
         queues_to_listen = queues or configured_queues.keys()
-        logger.debug(f"Configured  queues: {', '.join(queues_to_listen)}")
         for queue_name in queues_to_listen:
             if queue_name not in configured_queues:
                 logger.error(f"Queue '{queue_name}' not found in configured listening queues. Ignored.")
                 continue
             real_queue_name = self.get_real_queue_name(queue_name)
             _callback = Callback(queue_name, self, callback, ack=ack)
-            queue_config = configured_queues[queue_name]
-            binding_keys = queue_config.get("routing", [])
-            for binding_key in binding_keys:
-                logger.debug("Listening on queue '%s' routed by '%s'", queue_name, binding_key)
-                self.channel.queue_bind(exchange=self.exchange, queue=real_queue_name, routing_key=binding_key)
-
-            self.channel.basic_consume(queue=queue_name, on_message_callback=_callback, auto_ack=False)
+            self.channel.basic_consume(queue=real_queue_name, on_message_callback=_callback, auto_ack=False)  # type: ignore[union-attr]
 
         logger.info("Waiting for messages. To exit press CTRL+C")
-        self.channel.start_consuming()
+        self.channel.start_consuming()  # type: ignore[union-attr]

@@ -1,6 +1,6 @@
+import contextlib
 import logging
 import os
-import sys
 from pathlib import Path
 
 import pytest
@@ -8,8 +8,14 @@ import pytest
 logger = logging.getLogger(__name__)
 
 TEST_DIR = Path(__file__).parent
-SOURCE_DIR = TEST_DIR.parent / "src"
-sys.path.insert(0, SOURCE_DIR)
+
+# these two lines must match tox.ini config
+VHOST = "pytest"
+EXCHANGE = "test_stream"
+
+
+def pytest_configure():
+    pass
 
 
 def pytest_addoption(parser):
@@ -17,19 +23,31 @@ def pytest_addoption(parser):
     parser.addoption("--create-vhost", action="store_true", default=False, help="Re/Create RabbitMQ Virtual Host")
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture
 def configure_server(request):
+    import responses
     from pyrabbit2.api import Client
+    from pyrabbit2.http import HTTPError
 
+    responses.stop()
     client = Client("localhost:10001", "guest", "guest")
-    client.create_vhost("pytest")
-    client.set_vhost_permissions("pytest", "guest", ".*", ".*", ".*")
+    if request.config.getoption("--create-vhost"):
+        with contextlib.suppress(HTTPError):
+            client.delete_vhost(VHOST)
+    client.create_vhost(VHOST)
+    client.set_vhost_permissions(VHOST, "guest", ".*", ".*", ".*")
+    from streaming.backends import get_backend
+
+    backend = get_backend()
+    backend.connect()
+    backend.configure_exchanges()
+    backend.configure_queue_routing()
     yield
-    if request.session.testsfailed == 0 or not request.config.getoption("--reuse-vhost"):
-        client.delete_vhost("pytest")
+    if request.session.testsfailed == 0 and not request.config.getoption("--reuse-vhost"):
+        client.delete_vhost(VHOST)
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture
 def rabbit_server(configure_server):
     # stream_config.BROKER_URL = "rabbit://localhost:10000/vhost=pytest"
     os.environ["BROKER_URL"] = "rabbit://localhost:10000/vhost=pytest"
