@@ -57,13 +57,10 @@ def cli() -> None:
 
 
 @cli.command()
-@click.option("--client-name", default=None, help="Override client name")
 def configure(client_name: str) -> None:
     from streaming.config import CONFIG
 
     backend: RabbitMQBackend = assert_backend()
-    if client_name:
-        backend.client_name = client_name
     try:
         backend.connect(True)
         backend.configure_exchanges()
