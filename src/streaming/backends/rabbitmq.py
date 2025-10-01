@@ -1,6 +1,7 @@
 import logging
 import socket
 import time
+from contextlib import suppress
 from typing import TYPE_CHECKING
 
 import pika.channel
@@ -8,7 +9,7 @@ import pika.exceptions
 from pika import PlainCredentials
 from pika.exceptions import ConnectionClosedByBroker, ConnectionWrongStateError
 from pika.exchange_type import ExchangeType
-from contextlib import suppress
+
 from streaming.config import CONFIG
 from streaming.utils import exchange_exists
 

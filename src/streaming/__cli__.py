@@ -115,9 +115,7 @@ def _listen(queues: list[str], payload: bool, pretty: bool, client_name: str) ->
         queue_name: str, ch: BlockingChannel, method: Basic.Deliver, properties: BasicProperties, body: bytes
     ) -> None:
         message: Event = Event.unmarshal(body)
-        click.echo(
-            f"{Fore.GREEN}{message.timestamp} [{queue_name}]{Fore.LIGHTWHITE_EX} [{message.value_type}]{message.key} "
-        )
+        click.echo(f"{Fore.GREEN}{message.timestamp} [{queue_name}]{Fore.LIGHTWHITE_EX} [{message.key}] {message.id} ")
         extra: str | JSON
         if payload:
             if pretty:

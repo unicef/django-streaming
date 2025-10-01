@@ -55,10 +55,11 @@ def test_publish_error(backend: RabbitMQBackend, caplog) -> None:
             backend.publish("a.b", make_event("Hello World"))
             assert "Unhandled error sending to RabbitMQ. Message not published." in caplog.text
 
+
 @pytest.mark.withoutresponses
 def test_publish_success(backend: RabbitMQBackend, caplog) -> None:
     backend.connect(True)
-    with mock.patch.object(backend, "channel") as mocked_channel:
+    with mock.patch.object(backend, "channel"):
         with caplog.at_level(logging.DEBUG):
             assert backend.publish("a.b", make_event("Hello World"))
             assert "Publishing to exchange" in caplog.text
