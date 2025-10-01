@@ -55,6 +55,14 @@ def test_publish_error(backend: RabbitMQBackend, caplog) -> None:
             backend.publish("a.b", make_event("Hello World"))
             assert "Unhandled error sending to RabbitMQ. Message not published." in caplog.text
 
+@pytest.mark.withoutresponses
+def test_publish_success(backend: RabbitMQBackend, caplog) -> None:
+    backend.connect(True)
+    with mock.patch.object(backend, "channel") as mocked_channel:
+        with caplog.at_level(logging.DEBUG):
+            assert backend.publish("a.b", make_event("Hello World"))
+            assert "Publishing to exchange" in caplog.text
+
 
 @pytest.mark.withoutresponses
 def test_configure_exchanges(backend: RabbitMQBackend, caplog) -> None:
@@ -70,11 +78,6 @@ def test_get_real_queue_name(stream_config) -> None:
     stream_config.QUEUES = {"q1": {}}
     backend: RabbitMQBackend = get_backend()
     assert backend.get_real_queue_name("wrong-queue")
-    # with mock.patch.object(backend, "channel"):
-    #     backend.configure_queue_routing()
-    #     assert ":q1" in backend.get_real_queue_name("q1")
-    #     with pytest.raises(StreamingError, match="Unknown queue .*"):
-    #         backend.get_real_queue_name("wrong-queue")
 
 
 @pytest.mark.withoutresponses
@@ -83,6 +86,11 @@ def test_configure_queue_routing(backend: RabbitMQBackend, caplog) -> None:
     backend.configure_queue_routing()
     with mock.patch.object(backend, "channel", None):
         with pytest.raises(StreamingConfigError, match="No active channel"):
+            backend.configure_queue_routing()
+
+    with mock.patch("streaming.backends.rabbitmq.exchange_exists") as mocked_exchange_exists:
+        mocked_exchange_exists.return_value = False
+        with pytest.raises(StreamingConfigError, match="Exchange not found"):
             backend.configure_queue_routing()
 
 
@@ -202,7 +210,7 @@ def test_callback_error(caplog) -> None:
         )
 
         cb = Callback("q1", backend, user_callback, ack=True)
-        cb(ch, method, properties, b"{}")
+        cb(ch, method, properties, b'{"key":"", "payload": "{}"}')
         assert user_callback.called
         assert "StreamingCallbackError" in caplog.text
 

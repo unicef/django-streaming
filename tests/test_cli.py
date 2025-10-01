@@ -10,7 +10,7 @@ from streaming.__cli__ import assert_backend, cli
 from streaming.backends import get_backend
 from streaming.backends.rabbitmq import RabbitMQBackend
 from streaming.exceptions import AuthorizationError, StreamingConfigError
-from streaming.utils import json_dumps, make_event
+from streaming.utils import make_event
 
 
 @pytest.fixture
@@ -56,25 +56,30 @@ def test_cli_configure(stream_config, runner: CliRunner, configure_server) -> No
     stream_config.BROKER_URL = "rabbit://localhost:10000?vhost=pytest&exchange=stream"
     backend = get_backend()
     with mock.patch("streaming.__cli__.assert_backend") as mocked_assert_backend:
-        mocked_assert_backend.return_value = backend
-        result = runner.invoke(cli, ["configure"], catch_exceptions=False)
-        assert result.stderr == ""
-        assert result.exit_code == 0
+        with mock.patch.object(backend, "configure_queue_routing") as mocked_configure_queue_routing:
+            mocked_assert_backend.return_value = backend
+            result = runner.invoke(cli, ["configure"], catch_exceptions=False)
+            assert result.stderr == ""
+            assert result.exit_code == 0
+            assert mocked_configure_queue_routing.call_count == 0
 
-        result = runner.invoke(cli, ["configure", "--client-name", "test"], catch_exceptions=False)
-        assert result.exit_code == 0
-        with mock.patch.object(backend, "connect") as mocked_connect:
-            mocked_connect.side_effect = AuthorizationError
-            result = runner.invoke(cli, ["configure", "--client-name", "test"], catch_exceptions=False)
-            assert "Unable to connect using rabbit://localhost:10000" in result.stderr
-            assert result.stdout == ""
-            assert result.exit_code == 1
-        with mock.patch.object(backend, "connect") as mocked_connect:
-            mocked_connect.side_effect = StreamingConfigError
-            result = runner.invoke(cli, ["configure", "--client-name", "test"], catch_exceptions=False)
-            assert "Generic error" in result.stderr
-            assert result.stdout == ""
-            assert result.exit_code == 1
+            result = runner.invoke(cli, ["configure", "--queues"], catch_exceptions=False)
+            assert result.stderr == ""
+            assert result.exit_code == 0
+            assert mocked_configure_queue_routing.call_count == 1
+
+            with mock.patch.object(backend, "connect") as mocked_connect:
+                mocked_connect.side_effect = AuthorizationError
+                result = runner.invoke(cli, ["configure"], catch_exceptions=False)
+                assert "Unable to connect using rabbit://localhost:10000" in result.stderr
+                assert result.stdout == ""
+                assert result.exit_code == 1
+            with mock.patch.object(backend, "connect") as mocked_connect:
+                mocked_connect.side_effect = StreamingConfigError
+                result = runner.invoke(cli, ["configure"], catch_exceptions=False)
+                assert "Generic error" in result.stderr
+                assert result.stdout == ""
+                assert result.exit_code == 1
 
 
 def test_listen_ctrl_c(stream_config, runner: CliRunner, configure_server) -> None:
@@ -115,7 +120,7 @@ def test_listen_callback(stream_config, runner: CliRunner, caplog, args) -> None
         mocked_assert_backend.return_value = backend
         with mock.patch.object(backend, "listen") as mocked_listen:
             mocked_listen.side_effect = lambda cb, queues: cb(
-                "queue_name", MagicMock(), MagicMock(), MagicMock(), json_dumps(evt).encode()
+                "queue_name", MagicMock(), MagicMock(), MagicMock(), evt.marshall()
             )
             result = runner.invoke(cli, ["listen", *args], catch_exceptions=False)
             assert result.stderr == ""
@@ -124,7 +129,7 @@ def test_listen_callback(stream_config, runner: CliRunner, caplog, args) -> None
 
 def test_purge_wrong_backend(settings, runner: CliRunner) -> None:
     settings.STREAMING = {"BROKER_URL": "console://"}
-    result = runner.invoke(cli, ["purge"])
+    result = runner.invoke(cli, ["purge"], catch_exceptions=False)
     assert result.exit_code == 1
     assert "RabbitMQ backend is not configured" in result.output
 

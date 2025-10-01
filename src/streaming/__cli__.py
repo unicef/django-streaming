@@ -11,11 +11,12 @@ from pika.exceptions import ChannelClosedByBroker
 from pika.spec import Basic, BasicProperties
 
 from .backends import RabbitMQBackend, get_backend
+from .event import Event
 from .exceptions import AuthorizationError, StreamingConfigError
 from .utils import make_event
 
 if TYPE_CHECKING:
-    from .types import JSON, EventType
+    from .types import JSON
 
 
 logger = logging.getLogger(__name__)
@@ -57,14 +58,16 @@ def cli() -> None:
 
 
 @cli.command()
-def configure(client_name: str) -> None:
+@click.option("--queues/--no-queues", "queues", is_flag=True, default=False, help="Debug mode")
+def configure(queues: bool = False) -> None:
     from streaming.config import CONFIG
 
     backend: RabbitMQBackend = assert_backend()
     try:
         backend.connect(True)
         backend.configure_exchanges()
-        backend.configure_queue_routing()
+        if queues:
+            backend.configure_queue_routing()
         check.callback()  # type: ignore[misc]
     except AuthorizationError as e:
         click.secho(f"Unable to connect using {CONFIG.BROKER_URL}", fg="red", err=True)
@@ -96,7 +99,7 @@ def send(routing_key: str, message: str, client_name: str, debug: bool) -> None:
         payload = {
             "message": message,
         }
-    msg: EventType = make_event(payload, event="Test")
+    msg: Event = make_event(payload, key="Test")
     backend.publish(routing_key, msg)
     click.secho(f"Sent: {msg}")
     backend.disconnect()
@@ -111,25 +114,25 @@ def _listen(queues: list[str], payload: bool, pretty: bool, client_name: str) ->
     def callback(
         queue_name: str, ch: BlockingChannel, method: Basic.Deliver, properties: BasicProperties, body: bytes
     ) -> None:
-        message: EventType = json.loads(body.decode())
+        message: Event = Event.unmarshal(body)
         click.echo(
-            f"{Fore.GREEN}{message['timestamp']} "
-            f"[{queue_name}]"
-            f"{Fore.LIGHTWHITE_EX} [{message['type']}]"
-            f"{message['event']} "
+            f"{Fore.GREEN}{message.timestamp} [{queue_name}]{Fore.LIGHTWHITE_EX} [{message.value_type}]{message.key} "
         )
         extra: str | JSON
         if payload:
             if pretty:
-                extra = json.dumps(message["payload"], indent=4)
+                extra = json.dumps(message.payload, indent=4)
             else:
-                extra = message["payload"]
+                extra = message.payload
             click.echo(f"{Fore.YELLOW}{extra}{Fore.RESET}")
 
     try:
-        backend.connect()
+        backend.connect(True)
         _dump_info(backend)
         backend.listen(callback, queues=queues)
+    except StreamingConfigError as e:
+        click.secho(str(e), fg="red")
+        click.get_current_context().exit(2)
     except KeyboardInterrupt:
         click.secho("Stopping listener.", fg="yellow")
     finally:

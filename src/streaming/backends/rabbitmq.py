@@ -1,4 +1,3 @@
-import json
 import logging
 import socket
 import time
@@ -9,24 +8,24 @@ import pika.exceptions
 from pika import PlainCredentials
 from pika.exceptions import ConnectionClosedByBroker, ConnectionWrongStateError
 from pika.exchange_type import ExchangeType
-
+from contextlib import suppress
 from streaming.config import CONFIG
 from streaming.utils import exchange_exists
 
+from ..event import Event
 from ..exceptions import (
     AuthorizationError,
     StreamingCallbackError,
     StreamingCallbackFailure,
     StreamingConfigError,
 )
-from ..utils import json_dumps
 from ._base import BaseBackend
 
 if TYPE_CHECKING:
     from pika.adapters.blocking_connection import BlockingChannel
     from pika.spec import Basic, BasicProperties
 
-    from streaming.types import EventType, UserCallback
+    from streaming.types import UserCallback
 
 logger = logging.getLogger(__name__)
 
@@ -50,7 +49,7 @@ class Callback:
             if self.ack:
                 ch.basic_ack(delivery_tag=method.delivery_tag)  # type: ignore[arg-type]
         except StreamingCallbackError as e:
-            evt: EventType = json.loads(body.decode())
+            evt: Event = Event.unmarshal(body)
             retries = int(properties.headers.get("x-retries", 0))  # type: ignore[union-attr]
             ch.basic_ack(method.delivery_tag)  # type: ignore[arg-type]
             self.backend._handle_retry(evt, ch, method, retries)
@@ -148,16 +147,15 @@ class RabbitMQBackend(BaseBackend):
     def disconnect(self) -> None:
         try:
             if self._connection:
-                logger.debug("Closing RabbitMQ connection.")
-                self._connection.close()
-        except (ConnectionClosedByBroker, AttributeError, ConnectionWrongStateError):
-            pass
+                with suppress(ConnectionClosedByBroker, AttributeError, ConnectionWrongStateError):
+                    logger.debug("Closing RabbitMQ connection.")
+                    self._connection.close()
         finally:
             self._connection = None
             self.channel = None
 
     # Publisher
-    def publish(self, routing_key: str, message: "EventType") -> bool:
+    def publish(self, routing_key: str, message: "Event") -> bool:
         try:
             if not self.channel or self.channel.is_closed:
                 self.connect(True)
@@ -170,12 +168,12 @@ class RabbitMQBackend(BaseBackend):
 
     # Listener
 
-    def _basic_publish(self, message: "EventType", routing_key: str, retry_count: int = 0) -> None:
+    def _basic_publish(self, message: "Event", routing_key: str, retry_count: int = 0) -> None:
         self.check_channel()
         self.channel.basic_publish(  # type: ignore[union-attr]
             exchange=self.exchange,
             routing_key=routing_key,
-            body=json_dumps(message).encode(),
+            body=message.marshall(),
             properties=pika.BasicProperties(
                 delivery_mode=pika.spec.PERSISTENT_DELIVERY_MODE,
                 expiration=str(CONFIG.MESSAGE_TTL * 1000),  # milliseconds
@@ -183,7 +181,7 @@ class RabbitMQBackend(BaseBackend):
             ),
         )
 
-    def _handle_retry(self, message: "EventType", ch: "BlockingChannel", method: "Basic.Deliver", retries: int) -> None:
+    def _handle_retry(self, message: "Event", ch: "BlockingChannel", method: "Basic.Deliver", retries: int) -> None:
         ch.basic_ack(method.delivery_tag)  # type: ignore[arg-type]
         if retries < MAX_RETRIES:
             delay = 2000 * (2**retries)  # ms (exponential backoff)
@@ -214,9 +212,6 @@ class RabbitMQBackend(BaseBackend):
             return
         queues_to_listen = queues or configured_queues.keys()
         for queue_name in queues_to_listen:
-            if queue_name not in configured_queues:
-                logger.error(f"Queue '{queue_name}' not found in configured listening queues. Ignored.")
-                continue
             real_queue_name = self.get_real_queue_name(queue_name)
             _callback = Callback(queue_name, self, callback, ack=ack)
             self.channel.basic_consume(queue=real_queue_name, on_message_callback=_callback, auto_ack=False)  # type: ignore[union-attr]

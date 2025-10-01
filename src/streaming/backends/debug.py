@@ -6,13 +6,14 @@ from ._base import BaseBackend
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
-    from ..types import EventType, UserCallback
+    from ..event import Event
+    from ..types import UserCallback
 
 
 class DebugBackend(BaseBackend):
     def __init__(self, url: str) -> None:
         super().__init__(url)
-        self.messages: list[tuple[str, EventType]] = []
+        self.messages: list[tuple[str, Event]] = []
 
     def listen(self, callback: "UserCallback", queues: list[str] | None = None, ack: bool = True) -> None:
         pass
@@ -23,6 +24,6 @@ class DebugBackend(BaseBackend):
     def disconnect(self) -> None:
         pass
 
-    def publish(self, routing_key: str, message: "EventType") -> bool:
+    def publish(self, routing_key: str, message: "Event") -> bool:
         self.messages.append((routing_key, message))
         return True

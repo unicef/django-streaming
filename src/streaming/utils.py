@@ -1,5 +1,3 @@
-import datetime
-import json
 import socket
 from typing import TYPE_CHECKING, Any
 
@@ -9,7 +7,9 @@ from pika.adapters.blocking_connection import BlockingChannel
 from pika.exceptions import ChannelClosedByBroker
 
 if TYPE_CHECKING:
-    from streaming.types import JSON, EventType
+    from streaming.event import Event
+    from streaming.types import JSON
+
 
 MINUTE = 60
 HOUR = MINUTE * 60
@@ -18,30 +18,9 @@ DAY = HOUR * 24
 
 class StreamingJSONEncoder(DjangoJSONEncoder):
     def default(self, o: Any) -> Any:
-        if isinstance(o, datetime.datetime):
-            return o.isoformat()
         if isinstance(o, models.Model):
             return str(o)
         return super().default(o)
-
-
-def json_dumps(obj: Any) -> str:
-    return json.dumps(obj, cls=StreamingJSONEncoder)
-
-
-def json_loads(obj: str) -> "JSON":
-    def try_parse_iso(value: Any) -> Any:
-        if isinstance(value, str):
-            try:
-                return datetime.datetime.fromisoformat(value)
-            except ValueError:
-                return value
-        return value
-
-    def hook(dct: "JSON") -> Any:
-        return {k: try_parse_iso(v) for k, v in dct.items()}
-
-    return json.loads(obj, object_hook=hook)  # type: ignore[no-any-return]
 
 
 def parse_bool(value: Any) -> bool:
@@ -50,17 +29,10 @@ def parse_bool(value: Any) -> bool:
     return value in [1, True]
 
 
-def make_event(message: "str | JSON", *, event: str = "") -> "EventType":
-    if isinstance(message, str):
-        payload: JSON = {"message": message}
-    else:
-        payload = message
-    return {
-        "event": event,
-        "type": "absolute",
-        "timestamp": datetime.datetime.now(),
-        "payload": payload,
-    }
+def make_event(message: "str | JSON", *, key: str = "") -> "Event":
+    from streaming.event import Event
+
+    return Event.build(key=key, data=message, value_type="absolute")
 
 
 def get_local_ip() -> str:

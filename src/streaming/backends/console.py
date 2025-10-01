@@ -7,7 +7,8 @@ from ._base import BaseBackend
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
-    from ..types import EventType, UserCallback
+    from ..event import Event
+    from ..types import UserCallback
 
 
 class ConsoleBackend(BaseBackend):
@@ -15,7 +16,7 @@ class ConsoleBackend(BaseBackend):
         super().__init__(url)
         self.stream = self.get_option("stream", "stdout")
 
-    def publish(self, routing_key: str, message: "EventType") -> bool:
+    def publish(self, routing_key: str, message: "Event") -> bool:
         stream = getattr(sys, self.stream)
         stream.write(f"routing_key:{routing_key} message:{message}\n")
         return True

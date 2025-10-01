@@ -14,7 +14,8 @@ from ..exceptions import (
 if TYPE_CHECKING:
     from pika.adapters.blocking_connection import BlockingChannel, BlockingConnection
 
-    from streaming.types import EventType, UserCallback
+    from ..event import Event
+    from ..types import UserCallback
 
 
 logger = logging.getLogger(__name__)
@@ -80,7 +81,7 @@ class BaseBackend(ABC):
 
     # Publisher
     @abstractmethod
-    def publish(self, routing_key: str, message: "EventType") -> bool: ...
+    def publish(self, routing_key: str, message: "Event") -> bool: ...
 
     @abstractmethod
     def listen(self, callback: "UserCallback", queues: list[str] | None = None, ack: bool = True) -> None:

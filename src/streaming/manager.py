@@ -14,7 +14,7 @@ from .utils import make_event
 
 if TYPE_CHECKING:
     from .backends._base import BaseBackend
-    from .types import EventType
+    from .event import Event
 
 logger = logging.getLogger(__name__)
 
@@ -37,10 +37,10 @@ class ChangeManager:
         for field in sender._meta.fields:
             payload["fields"][field.name] = str(getattr(instance, field.name))
         routing_key = f"{sender._meta.app_label}.{sender._meta.model_name}.save"
-        message: EventType = make_event(payload, event=routing_key)
+        message: Event = make_event(payload, key=routing_key)
         self.notify(routing_key, message)
 
-    def notify(self, routing_key: str, event: "EventType") -> bool:
+    def notify(self, routing_key: str, event: "Event") -> bool:
         logger.debug("notifying [%s] %s", routing_key, event)
         return self.backend.publish(routing_key, event)
 
@@ -74,7 +74,7 @@ class ThreadedChangeManager(ChangeManager):
             except queue.Empty:
                 continue
 
-    def notify(self, routing_key: str, event: "EventType") -> bool:
+    def notify(self, routing_key: str, event: "Event") -> bool:
         self.queue.put((routing_key, event))
         self.start()
         return True
