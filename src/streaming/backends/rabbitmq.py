@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 import pika.channel
 import pika.exceptions
 from pika import PlainCredentials
-from pika.exceptions import ConnectionClosedByBroker, ConnectionWrongStateError
+from pika.exceptions import AMQPConnectionError, ConnectionClosed
 from pika.exchange_type import ExchangeType
 
 from streaming.config import CONFIG
@@ -51,8 +51,8 @@ class Callback:
             if self.ack:
                 ch.basic_ack(delivery_tag=method.delivery_tag)  # type: ignore[arg-type]
         except StreamingCallbackRetryError as e:
+            logger.error(f"StreamingCallbackError: {e}", exc_info=e)
             evt: Event = Event.unmarshal(body)
-            logger.debug(f"StreamingCallbackError {evt.id}", exc_info=e)
             retries = int(properties.headers.get("x-retries", 0))  # type: ignore[union-attr]
             self.backend._handle_retry(evt, ch, method, retries)
         except StreamingCallbackFailure as e:
@@ -152,7 +152,7 @@ class RabbitMQBackend(BaseBackend):
     def disconnect(self) -> None:
         try:
             if self._connection:
-                with suppress(ConnectionClosedByBroker, AttributeError, ConnectionWrongStateError):
+                with suppress(ConnectionClosed, AttributeError, AMQPConnectionError):
                     logger.debug("Closing RabbitMQ connection.")
                     self._connection.close()
         finally:

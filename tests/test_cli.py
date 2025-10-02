@@ -118,7 +118,7 @@ def test_listen_callback(stream_config, runner: CliRunner, caplog, args) -> None
     with mock.patch("streaming.__cli__.assert_backend") as mocked_assert_backend:
         mocked_assert_backend.return_value = backend
         with mock.patch.object(backend, "listen") as mocked_listen:
-            mocked_listen.side_effect = lambda cb, queues: cb(
+            mocked_listen.side_effect = lambda cb, queues, **kwargs: cb(
                 "queue_name", MagicMock(), MagicMock(), MagicMock(), evt.marshall()
             )
             result = runner.invoke(cli, ["listen", *args], catch_exceptions=False)

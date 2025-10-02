@@ -1,33 +1,35 @@
 import json
 import logging
-from typing import TYPE_CHECKING
+from collections.abc import Iterable
+from typing import TYPE_CHECKING, Any
 
 import click
 from click import ClickException
 from colorama import Fore, Style
 from django.core.exceptions import ImproperlyConfigured
+from django.utils.module_loading import import_string
 from pika.adapters.blocking_connection import BlockingChannel
 from pika.exceptions import ChannelClosedByBroker
 from pika.spec import Basic, BasicProperties
 
 from .backends import RabbitMQBackend, get_backend
 from .event import Event
-from .exceptions import AuthorizationError, StreamingConfigError
+from .exceptions import AuthorizationError, StreamingCallbackRetryError, StreamingConfigError
 from .utils import make_event
 
 if TYPE_CHECKING:
-    from .types import JSON
+    from .types import JSON, UserCallback
 
 logger = logging.getLogger(__name__)
-LINE = f"{Fore.YELLOW}%-16s: {Style.RESET_ALL}%s"
+INFO_LINE = f"{Fore.YELLOW}%-16s: {Style.RESET_ALL}%s"
 
 
 def _dump_info(backend: "RabbitMQBackend") -> None:
-    click.secho(LINE % ("Server", f"{backend.host}:{backend.port}"))
-    click.secho(LINE % ("VirtualHost", f"{backend.virtual_host}"))
-    click.secho(LINE % ("Exchange", f"{backend.exchange}"))
-    click.secho(LINE % ("Timeout", f"{backend.timeout}"))
-    click.secho(LINE % ("Client Name", f"{backend.client_name}"))
+    click.secho(INFO_LINE % ("Server", f"{backend.host}:{backend.port}"))
+    click.secho(INFO_LINE % ("VirtualHost", f"{backend.virtual_host}"))
+    click.secho(INFO_LINE % ("Exchange", f"{backend.exchange}"))
+    click.secho(INFO_LINE % ("Timeout", f"{backend.timeout}"))
+    click.secho(INFO_LINE % ("Client Name", f"{backend.client_name}"))
 
 
 def assert_backend() -> "RabbitMQBackend":
@@ -38,7 +40,7 @@ def assert_backend() -> "RabbitMQBackend":
     return backend
 
 
-def configure_logging(debug: bool, loggers: tuple[str, ...] = ("streaming",)) -> None:
+def configure_logging(debug: bool, loggers: Iterable[str] = ("streaming",)) -> None:
     for log_name in loggers:
         logr = logging.getLogger(log_name)
         if debug:
@@ -77,9 +79,9 @@ def configure(queues: bool = False, debug: bool = False) -> None:
             routing = backend.configure_queue_routing()
         check.callback()  # type: ignore[misc]
         if routing:
-            click.secho(LINE % ("Queues", ""))
+            click.secho(INFO_LINE % ("Queues", ""))
             for k, v in routing.items():
-                click.secho(LINE % (f"  {k}", "; ".join(v)))
+                click.secho(INFO_LINE % (f"  {k}", "; ".join(v)))
     except AuthorizationError as e:
         click.secho(f"Unable to connect using {CONFIG.BROKER_URL}", fg="red", err=True)
         raise ClickException(str(e)) from e
@@ -111,11 +113,58 @@ def send(routing_key: str, message: str, client_name: str, debug: bool) -> None:
     backend.disconnect()
 
 
-def _listen(queues: list[str], payload: bool, pretty: bool) -> None:
+def _listen(callback: "UserCallback", queues: list[str], ack: bool = True) -> None:
     backend = assert_backend()
 
-    def callback(
-        queue_name: str, ch: BlockingChannel, method: Basic.Deliver, properties: BasicProperties, body: bytes
+    try:
+        backend.connect(True)
+        _dump_info(backend)
+        backend.listen(callback, queues=queues, ack=ack)
+    except ChannelClosedByBroker as e:
+        click.secho(str(e), fg="red")
+        if "no queue" in str(e):
+            click.secho("Did you run 'stream configure --queues'", fg="red")
+    except StreamingCallbackRetryError:
+        pass
+    except (StreamingConfigError, ImportError) as e:
+        click.secho(str(e), fg="red")
+        click.get_current_context().exit(2)
+    except KeyboardInterrupt:
+        click.secho("Stopping listener.", fg="yellow")
+    finally:
+        backend.disconnect()
+
+
+@cli.command()
+@click.option("-q", "--queues", multiple=True, help="Queue name to listen to")
+@click.option("-cf", "--callback-factory", default=None, help="User callback")
+@click.option("--payload", default=False, is_flag=True, help="Print payload")
+@click.option("--autoreload", "reload", is_flag=True, help="Enable auto-reloading.")
+@click.option("--pretty", is_flag=True, help="Pretty-print payload.")
+@click.option("--debug", is_flag=True, help="Debug mode")
+@click.option("--dry-run", default=False, is_flag=True)
+@click.argument("pairs", nargs=-1)
+def listen(  # noqa PLR0913
+    queues: list[str],
+    payload: bool,
+    reload: bool,
+    pretty: bool,
+    callback_factory: str | None = None,
+    pairs: tuple[str, ...] = (),
+    debug: bool = False,
+    dry_run: bool = False,
+) -> None:
+    """Listens for streaming events."""
+    extra = dict(pair.split("=", 1) for pair in pairs)
+    configure_logging(debug)
+
+    def _callback(
+        queue_name: str,
+        ch: BlockingChannel,
+        method: Basic.Deliver,
+        properties: BasicProperties,
+        body: bytes,
+        **kwargs: Any,
     ) -> None:
         message: Event = Event.unmarshal(body)
         click.echo(f"{Fore.GREEN}{message.timestamp} [{queue_name}]{Fore.LIGHTWHITE_EX} [{message.key}] {message.id} ")
@@ -127,37 +176,24 @@ def _listen(queues: list[str], payload: bool, pretty: bool) -> None:
                 extra = message.payload
             click.echo(f"{Fore.YELLOW}{extra}{Fore.RESET}")
 
-    try:
-        backend.connect(True)
-        _dump_info(backend)
-        backend.listen(callback, queues=queues)
-    except ChannelClosedByBroker as e:
-        click.secho(str(e), fg="red")
-        if "no queue" in str(e):
-            click.secho("Did you run 'stream configure --queues'", fg="red")
-    except StreamingConfigError as e:
-        click.secho(str(e), fg="red")
-        click.get_current_context().exit(2)
-    except KeyboardInterrupt:
-        click.secho("Stopping listener.", fg="yellow")
-    finally:
-        backend.disconnect()
+    if callback_factory:
+        try:
+            factory = import_string(callback_factory)
+            if not callable(factory):
+                raise StreamingConfigError(f"Callback {callback_factory} is not a valid callback")
+            cb = factory(**extra)
+        except ImportError as e:
+            raise StreamingConfigError(f"Unable to import {callback_factory}: {e}") from None
+    else:
+        cb = _callback
 
-
-@cli.command()
-@click.option("-q", "--queues", multiple=True, help="Queue name to listen to")
-@click.option("--payload", default=False, is_flag=True, help="Print payload")
-@click.option("--autoreload", "reload", is_flag=True, help="Enable auto-reloading.")
-@click.option("--pretty", is_flag=True, help="Pretty-print payload.")
-def listen(queues: list[str], payload: bool, reload: bool, pretty: bool) -> None:
-    """Listens for streaming events."""
     if reload:
         from django.utils import autoreload
 
         click.secho("Starting listener with autoreload...", fg="yellow")
-        autoreload.run_with_reloader(_listen, queues=queues, payload=payload, pretty=pretty)
+        autoreload.run_with_reloader(_listen, queues=queues, callback=cb, ack=not dry_run)
     else:
-        _listen(queues=queues, payload=payload, pretty=pretty)
+        _listen(queues=queues, callback=cb, ack=not dry_run)
 
 
 @cli.command()
