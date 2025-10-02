@@ -18,22 +18,16 @@ from .utils import make_event
 if TYPE_CHECKING:
     from .types import JSON
 
-
 logger = logging.getLogger(__name__)
+LINE = f"{Fore.YELLOW}%-16s: {Style.RESET_ALL}%s"
 
 
 def _dump_info(backend: "RabbitMQBackend") -> None:
-    from streaming.config import CONFIG
-
-    line = f"{Fore.YELLOW}%-16s: {Style.RESET_ALL}%s"
-    click.secho(line % ("Server", f"{backend.host}:{backend.port}"))
-    click.secho(line % ("VirtualHost", f"{backend.virtual_host}"))
-    click.secho(line % ("Exchange", f"{backend.exchange}"))
-    click.secho(line % ("Queues", ""))
-    for alias, config in CONFIG.QUEUES.items():
-        click.secho(line % (f"   {alias}", f"{config}"))
-    click.secho(line % ("Timeout", f"{backend.timeout}"))
-    click.secho(line % ("Client Name", f"{backend.client_name}"))
+    click.secho(LINE % ("Server", f"{backend.host}:{backend.port}"))
+    click.secho(LINE % ("VirtualHost", f"{backend.virtual_host}"))
+    click.secho(LINE % ("Exchange", f"{backend.exchange}"))
+    click.secho(LINE % ("Timeout", f"{backend.timeout}"))
+    click.secho(LINE % ("Client Name", f"{backend.client_name}"))
 
 
 def assert_backend() -> "RabbitMQBackend":
@@ -42,6 +36,16 @@ def assert_backend() -> "RabbitMQBackend":
     if not isinstance(backend, RabbitMQBackend):
         raise ClickException("RabbitMQ backend is not configured")
     return backend
+
+
+def configure_logging(debug: bool, loggers: tuple[str, ...] = ("streaming",)) -> None:
+    for log_name in loggers:
+        logr = logging.getLogger(log_name)
+        if debug:
+            logr.setLevel(logging.DEBUG)
+            logr.addHandler(logging.StreamHandler())
+        else:
+            logr.handlers = []
 
 
 @click.group()
@@ -59,16 +63,23 @@ def cli() -> None:
 
 @cli.command()
 @click.option("--queues/--no-queues", "queues", is_flag=True, default=False, help="Debug mode")
-def configure(queues: bool = False) -> None:
+@click.option("--debug", is_flag=True, help="Debug mode")
+def configure(queues: bool = False, debug: bool = False) -> None:
     from streaming.config import CONFIG
 
+    routing = None
+    configure_logging(debug)
     backend: RabbitMQBackend = assert_backend()
     try:
         backend.connect(True)
         backend.configure_exchanges()
         if queues:
-            backend.configure_queue_routing()
+            routing = backend.configure_queue_routing()
         check.callback()  # type: ignore[misc]
+        if routing:
+            click.secho(LINE % ("Queues", ""))
+            for k, v in routing.items():
+                click.secho(LINE % (f"  {k}", "; ".join(v)))
     except AuthorizationError as e:
         click.secho(f"Unable to connect using {CONFIG.BROKER_URL}", fg="red", err=True)
         raise ClickException(str(e)) from e
@@ -84,12 +95,7 @@ def configure(queues: bool = False) -> None:
 @click.option("--debug", is_flag=True, help="Debug mode")
 def send(routing_key: str, message: str, client_name: str, debug: bool) -> None:
     backend = assert_backend()
-    logger = logging.getLogger("streaming")
-    if debug:
-        logger.setLevel(logging.DEBUG)
-        logger.addHandler(logging.StreamHandler())
-    else:
-        logger.handlers = []
+    configure_logging(debug)
 
     if client_name:
         backend.client_name = client_name
@@ -105,11 +111,8 @@ def send(routing_key: str, message: str, client_name: str, debug: bool) -> None:
     backend.disconnect()
 
 
-def _listen(queues: list[str], payload: bool, pretty: bool, client_name: str) -> None:
+def _listen(queues: list[str], payload: bool, pretty: bool) -> None:
     backend = assert_backend()
-
-    if client_name:
-        backend.client_name = client_name
 
     def callback(
         queue_name: str, ch: BlockingChannel, method: Basic.Deliver, properties: BasicProperties, body: bytes
@@ -128,6 +131,10 @@ def _listen(queues: list[str], payload: bool, pretty: bool, client_name: str) ->
         backend.connect(True)
         _dump_info(backend)
         backend.listen(callback, queues=queues)
+    except ChannelClosedByBroker as e:
+        click.secho(str(e), fg="red")
+        if "no queue" in str(e):
+            click.secho("Did you run 'stream configure --queues'", fg="red")
     except StreamingConfigError as e:
         click.secho(str(e), fg="red")
         click.get_current_context().exit(2)
@@ -139,19 +146,18 @@ def _listen(queues: list[str], payload: bool, pretty: bool, client_name: str) ->
 
 @cli.command()
 @click.option("-q", "--queues", multiple=True, help="Queue name to listen to")
-@click.option("-c", "--client-name", default=None, help="Override client name")
 @click.option("--payload", default=False, is_flag=True, help="Print payload")
 @click.option("--autoreload", "reload", is_flag=True, help="Enable auto-reloading.")
 @click.option("--pretty", is_flag=True, help="Pretty-print payload.")
-def listen(queues: list[str], payload: bool, reload: bool, pretty: bool, client_name: str) -> None:
+def listen(queues: list[str], payload: bool, reload: bool, pretty: bool) -> None:
     """Listens for streaming events."""
     if reload:
         from django.utils import autoreload
 
         click.secho("Starting listener with autoreload...", fg="yellow")
-        autoreload.run_with_reloader(_listen, queues=queues, payload=payload, pretty=pretty, client_name=client_name)
+        autoreload.run_with_reloader(_listen, queues=queues, payload=payload, pretty=pretty)
     else:
-        _listen(queues=queues, payload=payload, pretty=pretty, client_name=client_name)
+        _listen(queues=queues, payload=payload, pretty=pretty)
 
 
 @cli.command()

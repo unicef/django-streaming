@@ -11,6 +11,12 @@ if TYPE_CHECKING:
 
 
 class DebugBackend(BaseBackend):
+    def configure_queue_routing(self) -> dict[str, list[str]]:  # pragma: no cover
+        return {}
+
+    def configure_exchanges(self) -> None:  # pragma: no cover
+        pass
+
     def __init__(self, url: str) -> None:
         super().__init__(url)
         self.messages: list[tuple[str, Event]] = []

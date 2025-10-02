@@ -42,7 +42,7 @@ class BaseBackend(ABC):
         self.timeout = float(self.get_option("timeout", 0.5))
         self.virtual_host = self.get_option("vhost", "/")
         # listener
-        self.client_name = CONFIG.CLIENT_NAME or get_local_ip()
+        self.client_name = CONFIG.CLIENT_NAME or self.get_option("client_name", get_local_ip())
         atexit.register(self.disconnect)
 
     def get_option(self, name: str, default: Any = "") -> Any:
@@ -56,11 +56,13 @@ class BaseBackend(ABC):
     def client_name(self, name: str) -> None:
         self.__client_name = name
 
+    @abstractmethod
     def configure_exchanges(self) -> None:  # noqa: B027
-        pass
+        ...
 
-    def configure_queue_routing(self) -> None:  # noqa: B027
-        pass
+    @abstractmethod
+    def configure_queue_routing(self) -> dict[str, list[str]]:  # noqa: B027
+        ...
 
     def get_real_queue_name(self, name: str) -> str:
         return f"{self.client_name}:{name}"

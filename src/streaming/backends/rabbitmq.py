@@ -1,6 +1,7 @@
 import logging
 import socket
 import time
+from collections import defaultdict
 from contextlib import suppress
 from typing import TYPE_CHECKING
 
@@ -51,10 +52,9 @@ class Callback:
                 ch.basic_ack(delivery_tag=method.delivery_tag)  # type: ignore[arg-type]
         except StreamingCallbackError as e:
             evt: Event = Event.unmarshal(body)
+            logger.debug(f"StreamingCallbackError {evt.id}", exc_info=e)
             retries = int(properties.headers.get("x-retries", 0))  # type: ignore[union-attr]
-            ch.basic_ack(method.delivery_tag)  # type: ignore[arg-type]
             self.backend._handle_retry(evt, ch, method, retries)
-            logger.debug("StreamingCallbackError", exc_info=e)
         except StreamingCallbackFailure as e:
             logger.error(f"Callback failure: {e}", exc_info=e)
         except Exception as e:
@@ -89,19 +89,23 @@ class RabbitMQBackend(BaseBackend):
         )
         self.channel.exchange_declare(self.retry_exchange, exchange_type=ExchangeType.direct, durable=True)
 
-    def configure_queue_routing(self) -> None:
+    def configure_queue_routing(self) -> dict[str, list[str]]:
         self.check_channel()
         if not exchange_exists(self.channel, self.exchange):
             raise StreamingConfigError("Exchange not found")
-
+        ret = defaultdict(list)
         for alias, config in CONFIG.QUEUES.items():
             real_name = self.get_real_queue_name(alias)
             logger.debug(f"Declaring queue '{real_name}'")
             self.channel.queue_declare(queue=real_name, durable=True, arguments=None)  # type: ignore[union-attr]
-            binding_keys = config.get("routing", [])
-            for binding_key in binding_keys:
-                logger.debug("Listening on queue '%s' routed by '%s'", alias, binding_key)
-                self.channel.queue_bind(exchange=self.exchange, queue=real_name, routing_key=binding_key)  # type: ignore[union-attr]
+            if binding_keys := config.get("routing", []):
+                for binding_key in binding_keys:
+                    logger.debug("Listening on queue '%s' routed by '%s'", alias, binding_key)
+                    self.channel.queue_bind(exchange=self.exchange, queue=real_name, routing_key=binding_key)  # type: ignore[union-attr]
+                    ret[alias].append(binding_key)
+            else:
+                ret[alias].append("warning no routing defined")
+        return ret
 
     def connect(self, raise_if_error: bool = False) -> None:
         logger.debug("Connecting to %s:%s", self.host, self.port)
@@ -169,10 +173,12 @@ class RabbitMQBackend(BaseBackend):
 
     # Listener
 
-    def _basic_publish(self, message: "Event", routing_key: str, retry_count: int = 0) -> None:
+    def _basic_publish(
+        self, message: "Event", routing_key: str, retry_count: int = 0, exchange: str | None = None
+    ) -> None:
         self.check_channel()
         self.channel.basic_publish(  # type: ignore[union-attr]
-            exchange=self.exchange,
+            exchange=exchange or self.exchange,
             routing_key=routing_key,
             body=message.marshall(),
             properties=pika.BasicProperties(
@@ -186,7 +192,11 @@ class RabbitMQBackend(BaseBackend):
         ch.basic_ack(method.delivery_tag)  # type: ignore[arg-type]
         if retries < MAX_RETRIES:
             delay = 2000 * (2**retries)  # ms (exponential backoff)
-            delay_queue = f"{self.exchange}_retry_{delay}ms"
+            delay_queue = f"{self.exchange}_retry_{method.routing_key}_{delay}ms"
+            logger.debug(
+                f"Retrying message {message.id} ({retries + 1}/{MAX_RETRIES}) "
+                f"with routing key '{method.routing_key}' in {delay / 1000}s"
+            )
 
             # Declare a delay queue with TTL
             ch.queue_declare(
@@ -195,12 +205,13 @@ class RabbitMQBackend(BaseBackend):
                 arguments={
                     "x-dead-letter-exchange": self.exchange,  # after delay → back to main
                     "x-message-ttl": delay,
+                    "x-dead-letter-routing-key": method.routing_key,
                 },
             )
-            ch.queue_bind(delay_queue, self.retry_exchange, routing_key="task")
-            self._basic_publish(message, routing_key=method.routing_key or "*", retry_count=retries + 1)
+            ch.queue_bind(delay_queue, self.retry_exchange, routing_key=delay_queue)
+            self._basic_publish(message, routing_key=delay_queue, retry_count=retries + 1, exchange=self.retry_exchange)
         else:
-            logger.error(f"Dropping after {MAX_RETRIES} retries")
+            logger.error(f"Dropping message {message.id} after {MAX_RETRIES} retries")
 
     def listen(self, callback: "UserCallback", queues: list[str] | None = None, ack: bool = True) -> None:
         if self.channel is None:

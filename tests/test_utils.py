@@ -45,13 +45,13 @@ def test_exchange_exists():
 def test_make_event_with_string_message():
     event = make_event("hello", key="test_event")
     assert isinstance(event.timestamp, datetime.datetime)
-    assert sorted(event.as_dict().keys()) == ["key", "payload", "timestamp", "value_type"]
+    assert sorted(event.as_dict().keys()) == ["id", "key", "payload", "timestamp", "value_type"]
 
 
 def test_make_event_with_json_message():
     event = make_event({"key": "value", "number": 123}, key="json_event")
     assert isinstance(event.timestamp, datetime.datetime)
-    assert sorted(event.as_dict().keys()) == ["key", "payload", "timestamp", "value_type"]
+    assert sorted(event.as_dict().keys()) == ["id", "key", "payload", "timestamp", "value_type"]
 
 
 def test_encoding(admin_user):

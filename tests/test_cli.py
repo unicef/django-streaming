@@ -106,7 +106,6 @@ def test_listen_wrong_backend(settings, runner: CliRunner, caplog) -> None:
     "args",
     [
         (),
-        ("--client-name", "name1"),
         ("--payload",),
         ("--pretty",),
         ("--payload", "--pretty"),

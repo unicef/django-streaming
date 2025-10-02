@@ -1,6 +1,5 @@
 import logging
 import socket
-from typing import TYPE_CHECKING
 from unittest import mock
 from unittest.mock import MagicMock
 
@@ -10,11 +9,9 @@ from pika.spec import PERSISTENT_DELIVERY_MODE, Basic, BasicProperties
 
 from streaming.backends import get_backend
 from streaming.backends.rabbitmq import MAX_RETRIES, Callback, RabbitMQBackend
+from streaming.event import Event
 from streaming.exceptions import StreamingCallbackError, StreamingCallbackFailure, StreamingConfigError
 from streaming.utils import make_event
-
-if TYPE_CHECKING:
-    from streaming.types import EventType
 
 logger = logging.getLogger(__name__)
 
@@ -193,25 +190,37 @@ def test_callback(backend, ack) -> None:
 
 
 def test_callback_error(caplog) -> None:
+    """
+    This test ensures that when a `StreamingCallbackError` is raised during message
+    processing, the system correctly logs the error, which is the entry point
+    for the retry mechanism.
+    """
     backend: RabbitMQBackend = get_backend()
 
     with mock.patch.object(backend, "channel", spec=BlockingChannel):
+        # Mock a user callback that always fails with a retryable error
         user_callback = MagicMock()
         user_callback.side_effect = StreamingCallbackError
+
+        # Mock the channel and message details
         ch = mock.Mock(spec=BlockingChannel)
         ch.basic_ack = MagicMock()
         method = mock.Mock(spec=Basic.Deliver)
-        method.delivery_tag = 123  # must exist!
-        method.routing_key = 123  # must exist!
+        method.delivery_tag = 123
+        method.routing_key = "some.routing.key"
 
-        properties = BasicProperties(
-            delivery_mode=PERSISTENT_DELIVERY_MODE,
-            expiration="1000",  # milliseconds
-            headers={"x-retries": 1},
+        properties = BasicProperties(headers={"x-retries": 1})
+
+        # Create and execute the callback
+        cb = Callback("q1", backend, user_callback, ack=True)
+        cb(
+            ch,
+            method,
+            properties,
+            b'{"id":1,"payload":{},"key":"event","value_type":"absolute","timestamp":"2025-10-02T15:45:30+00:00"}',
         )
 
-        cb = Callback("q1", backend, user_callback, ack=True)
-        cb(ch, method, properties, b'{"key":"", "payload": "{}"}')
+        # Assert that the callback was called and the error was logged
         assert user_callback.called
         assert "StreamingCallbackError" in caplog.text
 
@@ -266,20 +275,31 @@ def test_callback_exception(caplog) -> None:
 
 
 def test_backend__handle_retry(configure_server) -> None:
+    """
+    This test verifies that the `_handle_retry` method correctly publishes a new
+    message to the retry infrastructure.
+    """
     backend: RabbitMQBackend = get_backend()
 
     with mock.patch.object(backend, "channel", spec=BlockingChannel):
         backend.connect()
-        message: "EventType" = {"event": "event", "timestamp": "", "type": "absolute", "payload": {}}
+        message = Event(key="event", value_type="absolute", payload={})
+
+        # Mock the method that publishes messages
         backend._basic_publish = MagicMock()
+
+        # Mock the channel and message details
         ch = mock.Mock(spec=BlockingChannel)
         ch.basic_ack = MagicMock()
         ch.queue_bind = MagicMock()
         method = mock.Mock(spec=Basic.Deliver)
-        method.delivery_tag = 123  # must exist!
-        method.routing_key = "123"  # must exist!
+        method.delivery_tag = 123
+        method.routing_key = "123"
 
+        # Call the retry handler
         backend._handle_retry(message, ch, method, 1)
+
+        # Assert that the original message was acknowledged and a new one was published
         assert backend._basic_publish.called
         assert ch.basic_ack.called
 
@@ -287,7 +307,7 @@ def test_backend__handle_retry(configure_server) -> None:
 def test_backend_max_retry(caplog, configure_server) -> None:
     backend = get_backend()
     backend.connect()
-    message: "EventType" = {"event": "event", "timestamp": "", "type": "absolute", "payload": {}}
+    message = Event(key="event", value_type="absolute", payload={})
     backend._basic_publish = MagicMock()
     ch = mock.Mock(spec=BlockingChannel)
     ch.basic_ack = MagicMock()
@@ -297,6 +317,6 @@ def test_backend_max_retry(caplog, configure_server) -> None:
 
     with caplog.at_level(logging.ERROR):
         backend._handle_retry(message, ch, method, MAX_RETRIES + 1)
-        assert f"Dropping after {MAX_RETRIES} retries" in caplog.text
+        assert "Dropping message" in caplog.text
 
     assert not backend._basic_publish.called

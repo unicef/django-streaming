@@ -16,6 +16,12 @@ class ConsoleBackend(BaseBackend):
         super().__init__(url)
         self.stream = self.get_option("stream", "stdout")
 
+    def configure_queue_routing(self) -> dict[str, list[str]]:  # pragma: no cover
+        return {}
+
+    def configure_exchanges(self) -> None:  # pragma: no cover
+        pass
+
     def publish(self, routing_key: str, message: "Event") -> bool:
         stream = getattr(sys, self.stream)
         stream.write(f"routing_key:{routing_key} message:{message}\n")
