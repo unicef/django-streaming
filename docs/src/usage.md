@@ -4,7 +4,7 @@
 
 ## Basic Usage
 
-To use `hope-streaming`, you typically configure a backend in your Django settings and then use the provided `publish` function to send messages.
+To use `django-streaming`, you typically configure a backend in your Django settings and then use the provided `publish` function to send messages.
 
 Example `settings.py` configuration for the console backend:
 
@@ -30,7 +30,7 @@ To enable the threaded manager, set the `MANAGER_CLASS` in your `settings.py`:
 
 ```python
 STREAMING = {
-    "MANAGER_CLASS": "streaming.threaded.ThreadedChangeManager"
+    "MANAGER_CLASS": "streaming.manager.ThreadedChangeManager"
 }
 ```
 

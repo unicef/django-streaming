@@ -10,7 +10,7 @@ from pika.spec import PERSISTENT_DELIVERY_MODE, Basic, BasicProperties
 from streaming.backends import get_backend
 from streaming.backends.rabbitmq import MAX_RETRIES, Callback, RabbitMQBackend
 from streaming.event import Event
-from streaming.exceptions import StreamingCallbackError, StreamingCallbackFailure, StreamingConfigError
+from streaming.exceptions import StreamingCallbackFailure, StreamingCallbackRetryError, StreamingConfigError
 from streaming.utils import make_event
 
 logger = logging.getLogger(__name__)
@@ -200,7 +200,7 @@ def test_callback_error(caplog) -> None:
     with mock.patch.object(backend, "channel", spec=BlockingChannel):
         # Mock a user callback that always fails with a retryable error
         user_callback = MagicMock()
-        user_callback.side_effect = StreamingCallbackError
+        user_callback.side_effect = StreamingCallbackRetryError
 
         # Mock the channel and message details
         ch = mock.Mock(spec=BlockingChannel)

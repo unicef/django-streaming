@@ -6,7 +6,7 @@ To install `django-streaming`, follow these steps:
 
     ```bash
     git clone https://github.com/UNICEF/django-streaming.git
-    cd hope-streaming
+    cd django-streaming
     ```
 
 2.  **Install dependencies:**

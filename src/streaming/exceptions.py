@@ -19,7 +19,7 @@ class StreamingBackendError(StreamingError):
     pass
 
 
-class StreamingCallbackError(StreamingError):
+class StreamingCallbackRetryError(StreamingError):
     """Generic exception raised when a callback fails. Message will be re-queued."""
 
 

@@ -17,8 +17,8 @@ from streaming.utils import exchange_exists
 from ..event import Event
 from ..exceptions import (
     AuthorizationError,
-    StreamingCallbackError,
     StreamingCallbackFailure,
+    StreamingCallbackRetryError,
     StreamingConfigError,
 )
 from ._base import BaseBackend
@@ -50,7 +50,7 @@ class Callback:
             self.user_callback(self.queue_name, ch, method, properties, body)
             if self.ack:
                 ch.basic_ack(delivery_tag=method.delivery_tag)  # type: ignore[arg-type]
-        except StreamingCallbackError as e:
+        except StreamingCallbackRetryError as e:
             evt: Event = Event.unmarshal(body)
             logger.debug(f"StreamingCallbackError {evt.id}", exc_info=e)
             retries = int(properties.headers.get("x-retries", 0))  # type: ignore[union-attr]

@@ -4,7 +4,7 @@ First off, thank you for considering contributing to django-streaming! It's peop
 
 ## Where do I go from here?
 
-If you've noticed a bug or have a question, [search the issue tracker](https://github.com/saxix/django-streaming/issues) to see if someone else in the community has already created a ticket.
+If you've noticed a bug or have a question, [search the issue tracker](https://github.com/UNICEF/django-streaming/issues) to see if someone else in the community has already created a ticket.
 If not, feel free to create a new one!
 
 ## Fork & create a branch

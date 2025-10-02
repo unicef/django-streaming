@@ -12,6 +12,27 @@ stream --help
 
 This will show you the main commands: `listen`, `send`, `purge`, and `check`.
 
+## `configure`
+
+The `configure` command allows you to configure exchanges and queues on the RabbitMQ broker.
+
+```bash
+stream configure --help
+```
+
+**Options:**
+
+*   `--queues / --no-queues`: (flag) Whether to configure queues.
+*   `--debug`: (flag) Enable debug logging.
+
+**Example:**
+
+```bash
+stream configure --queues
+```
+
+This command will configure the exchanges and all queues defined in `STREAMING['QUEUES']`.
+
 ## `listen`
 
 The `listen` command allows you to listen for messages from one or more RabbitMQ queues configured in your `settings.py`.
@@ -22,9 +43,9 @@ stream listen --help
 
 **Options:**
 
-*   `--queues TEXT`: (option, multiple) The alias of the queue to listen to. You can specify this option multiple times to listen to multiple queues. If not provided, it will listen to all queues defined in `STREAMING['QUEUES']`.
+*   `-q`, `--queues TEXT`: The alias of the queue to listen to. You can specify this option multiple times to listen to multiple queues. If not provided, it will listen to all queues defined in `STREAMING['QUEUES']`.
 *   `--payload`: (flag) Print the message payload.
-*   `--autoreload`: (flag) Enable auto-reloading for development.
+*   `--reload`: (flag) Enable auto-reloading for development.
 *   `--pretty`: (flag) Pretty-print the JSON payload.
 
 **Example:**

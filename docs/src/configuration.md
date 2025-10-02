@@ -20,7 +20,7 @@ The `django-streaming` library can be configured via the `STREAMING` dictionary 
     The maximum time a message can live in a queue before being discarded. The value is in seconds.
 
 *   **`MANAGER_CLASS`** (string, default: `"streaming.manager.ChangeManager"`):
-    The Python path to the `ChangeManager` class to be used. You can switch to the threaded manager by setting this to `"streaming.threaded.ThreadedChangeManager"`.
+    The Python path to the `ChangeManager` class to be used. You can switch to the threaded manager by setting this to `"streaming.manager.ThreadedChangeManager"`.
 
 *   **`QUEUES`** (dict, default: `{}`):
     A dictionary to configure the queues. The keys are queue aliases, and the values are dictionaries with queue parameters.
@@ -49,5 +49,5 @@ The `django-streaming` library can be configured via the `STREAMING` dictionary 
 
 ## RabbitMQ Specific Settings
 
-*   **`CONNECTION_NAME`** (string, default: `"django-streaming-app"`):
+*   **`CLIENT_NAME`** (string, default: `""`):
     A label for the RabbitMQ connection, visible in the RabbitMQ management interface.
