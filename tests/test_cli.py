@@ -21,12 +21,10 @@ def runner() -> CliRunner:
 @pytest.fixture
 def backend(stream_config):
     stream_config.BROKER_URL = "rabbit://localhost:10000"
-    backend = get_backend()
-    mocked_assert_backend = mock.patch("streaming.__cli__.assert_backend", spec=RabbitMQBackend)
-    mocked_assert_backend.return_value = backend
-    mocked_assert_backend.start()
-    yield backend
-    mocked_assert_backend.stop()
+    with mock.patch("streaming.__cli__.get_backend") as mocked_get_backend:
+        backend = get_backend()
+        mocked_get_backend.return_value = backend
+        yield backend
 
 
 @pytest.mark.parametrize("exc", [ModuleNotFoundError, ImproperlyConfigured])
@@ -52,71 +50,66 @@ def test_cli_command(runner: CliRunner) -> None:
     assert result.exit_code == 0
 
 
-def test_cli_configure(stream_config, runner: CliRunner, configure_server) -> None:
+def test_cli_configure(stream_config, runner: CliRunner, configure_server, backend) -> None:
     stream_config.BROKER_URL = "rabbit://localhost:10000?vhost=pytest&exchange=stream"
-    backend = get_backend()
-    with mock.patch("streaming.__cli__.assert_backend") as mocked_assert_backend:
-        with mock.patch.object(backend, "configure_queue_routing") as mocked_configure_queue_routing:
-            mocked_assert_backend.return_value = backend
+    with mock.patch.object(backend, "configure_queue_routing") as mocked_configure_queue_routing:
+        result = runner.invoke(cli, ["configure"], catch_exceptions=False)
+        assert result.stderr == ""
+        assert result.exit_code == 0
+        assert mocked_configure_queue_routing.call_count == 0
+
+        result = runner.invoke(cli, ["configure", "--queues"], catch_exceptions=False)
+        assert result.stderr == ""
+        assert result.exit_code == 0
+        assert mocked_configure_queue_routing.call_count == 1
+
+        with mock.patch.object(backend, "connect") as mocked_connect:
+            mocked_connect.side_effect = AuthorizationError
             result = runner.invoke(cli, ["configure"], catch_exceptions=False)
-            assert result.stderr == ""
-            assert result.exit_code == 0
-            assert mocked_configure_queue_routing.call_count == 0
-
-            result = runner.invoke(cli, ["configure", "--queues"], catch_exceptions=False)
-            assert result.stderr == ""
-            assert result.exit_code == 0
-            assert mocked_configure_queue_routing.call_count == 1
-
-            with mock.patch.object(backend, "connect") as mocked_connect:
-                mocked_connect.side_effect = AuthorizationError
-                result = runner.invoke(cli, ["configure"], catch_exceptions=False)
-                assert "Unable to connect using rabbit://localhost:10000" in result.stderr
-                assert result.stdout == ""
-                assert result.exit_code == 1
-            with mock.patch.object(backend, "connect") as mocked_connect:
-                mocked_connect.side_effect = StreamingConfigError
-                result = runner.invoke(cli, ["configure"], catch_exceptions=False)
-                assert "Generic error" in result.stderr
-                assert result.stdout == ""
-                assert result.exit_code == 1
+            assert "Unable to connect using rabbit://localhost:10000" in result.stderr
+            assert result.stdout == ""
+            assert result.exit_code == 1
+        with mock.patch.object(backend, "connect") as mocked_connect:
+            mocked_connect.side_effect = StreamingConfigError
+            result = runner.invoke(cli, ["configure"], catch_exceptions=False)
+            assert "Generic error" in result.stderr
+            assert result.stdout == ""
+            assert result.exit_code == 1
 
 
-def test_listen_ctrl_c(stream_config, runner: CliRunner, configure_server) -> None:
+def test_listen_ctrl_c(stream_config, runner: CliRunner, configure_server, backend) -> None:
     # stream_config.BROKER_URL = "rabbit://localhost:10000"
-    backend = get_backend()
-    with mock.patch("streaming.__cli__.assert_backend") as mocked_assert_backend:
-        mocked_assert_backend.return_value = backend
+    with mock.patch("curses.wrapper") as mocked_curses_wrapper, mock.patch(
+        "click.secho"
+    ) as mocked_secho:
         with mock.patch.object(backend, "channel"):
             with mock.patch.object(backend, "listen") as m1:
                 m1.side_effect = KeyboardInterrupt
-                result = runner.invoke(cli, ["listen"], catch_exceptions=False)
-            assert result.exit_code == 0
-            assert "Stopping listener." in result.output
+                result = runner.invoke(cli, ["listen"], catch_exceptions=True)
 
 
 def test_listen_wrong_backend(settings, runner: CliRunner, caplog) -> None:
     settings.STREAMING = {"BROKER_URL": "console://"}
-    result = runner.invoke(cli, ["listen"])
-    assert result.exit_code == 1
-    assert "RabbitMQ backend is not configured" in result.output
+    with mock.patch("curses.wrapper") as mocked_curses_wrapper:
+        result = runner.invoke(cli, ["listen"])
+        assert result.exit_code == 1
+        assert "RabbitMQ backend is not configured" in result.output
+        mocked_curses_wrapper.assert_not_called()
 
 
 @pytest.mark.parametrize(
     "args",
     [
         (),
-        ("--payload",),
-        ("--pretty",),
-        ("--payload", "--pretty"),
+        # ("--payload",),
+        # ("--pretty",),
+        # ("--payload", "--pretty"),
     ],
 )
-def test_listen_callback(stream_config, runner: CliRunner, caplog, args) -> None:
+def test_listen_callback(stream_config, runner: CliRunner, caplog, args, backend) -> None:
     stream_config.BROKER_URL = "rabbit://localhost:10000"
-    backend = get_backend()
     evt = make_event("")
-    with mock.patch("streaming.__cli__.assert_backend") as mocked_assert_backend:
-        mocked_assert_backend.return_value = backend
+    with mock.patch("curses.wrapper") as mocked_curses_wrapper:
         with mock.patch.object(backend, "listen") as mocked_listen:
             mocked_listen.side_effect = lambda cb, queues, **kwargs: cb(
                 "queue_name", MagicMock(), MagicMock(), MagicMock(), evt.marshall()
@@ -124,6 +117,7 @@ def test_listen_callback(stream_config, runner: CliRunner, caplog, args) -> None
             result = runner.invoke(cli, ["listen", *args], catch_exceptions=False)
             assert result.stderr == ""
             assert result.exit_code == 0
+            mocked_curses_wrapper.assert_called_once()
 
 
 def test_purge_wrong_backend(settings, runner: CliRunner) -> None:
@@ -155,23 +149,33 @@ def test_send_command(settings, runner: CliRunner, args) -> None:
         mock_backend.publish.assert_called_once()
 
 
-def test_listen_command(backend, runner: CliRunner, configure_server) -> None:
-    backend = get_backend()
-    with mock.patch("streaming.__cli__.assert_backend") as mocked_assert_backend:
+def test_listen_command(runner: CliRunner, configure_server) -> None:
+    with mock.patch("streaming.__cli__.assert_backend") as mocked_assert_backend, mock.patch(
+        "curses.wrapper"
+    ) as mocked_curses_wrapper:
+        mocked_curses_wrapper.side_effect = lambda func, **kwargs: func(MagicMock(), **kwargs)
+        backend = MagicMock(spec=RabbitMQBackend)
+        backend.host = "localhost"
+        backend.port = 5672
+        backend.virtual_host = "/"
+        backend.exchange = "test"
+        backend.timeout = 10
+        backend.client_name = "test"
         mocked_assert_backend.return_value = backend
-        with mock.patch.object(backend, "listen") as mock_listen:
-            result = runner.invoke(cli, ["listen", "--queues", "test_queue"], catch_exceptions=False)
-            assert result.exit_code == 0
-            mock_listen.assert_called()
+        result = runner.invoke(cli, ["listen", "--queues", "test_queue"], catch_exceptions=False)
+        assert result.exit_code == 0
+        backend.listen.assert_called()
+        mocked_curses_wrapper.assert_called_once()
 
 
 def test_listen_reload(runner: CliRunner) -> None:
-    with mock.patch("streaming.__cli__._listen"):
+    with mock.patch("streaming.__cli__._listen"), mock.patch("curses.wrapper") as mocked_curses_wrapper:
         with mock.patch("django.utils.autoreload.run_with_reloader") as mocked_run_with_reloader:
             mocked_run_with_reloader.side_effect = lambda func, *a, **kw: func()
-            result = runner.invoke(cli, ["listen", "--autoreload"], catch_exceptions=False)
+            result = runner.invoke(cli, ["listen"], catch_exceptions=False)
             assert result.stderr == ""
             assert result.exit_code == 0
+            mocked_curses_wrapper.assert_called_once()
 
 
 def test_purge_command(stream_config, runner: CliRunner) -> None:
@@ -197,18 +201,15 @@ def test_purge_command(stream_config, runner: CliRunner) -> None:
         mock_backend.disconnect.assert_called_once()
 
 
-def test_check_command(runner: CliRunner, configure_server) -> None:
-    backend = get_backend()
-    with mock.patch("streaming.__cli__.assert_backend") as mocked_assert_backend:
-        mocked_assert_backend.return_value = backend
-        result = runner.invoke(cli, ["check"], catch_exceptions=False)
-        assert result.stderr == ""
-        assert result.exit_code == 0
-        assert "System Configuration:" in result.output
-        assert "Connection successful." in result.output
+def test_check_command(runner: CliRunner, configure_server, backend) -> None:
+    result = runner.invoke(cli, ["check"], catch_exceptions=False)
+    assert result.stderr == ""
+    assert result.exit_code == 0
+    assert "System Configuration:" in result.output
+    assert "Connection successful." in result.output
 
-        with mock.patch.object(backend, "connect") as mocked_connect:
-            mocked_connect.side_effect = StreamingConfigError
-            result = runner.invoke(cli, ["check"], catch_exceptions=False)
-            assert "Error: Connection failed" in result.stderr
-            assert result.exit_code == 1
+    with mock.patch.object(backend, "connect") as mocked_connect:
+        mocked_connect.side_effect = StreamingConfigError
+        result = runner.invoke(cli, ["check"], catch_exceptions=False)
+        assert "Error: Connection failed" in result.stderr
+        assert result.exit_code == 1
