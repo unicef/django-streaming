@@ -64,7 +64,7 @@ For each queue, you can specify:
 
 ## Listening for messages
 
-To listen for messages, you can use the `stream listen` command line interface. See the [CLI documentation](cli.md) for more details.
+To listen for messages, you can use the `stream listen` command line interface. See the [CLI documentation](../cli.md) for more details.
 
 If you need to listen for messages from your code, you can use the `manager.listen()` method.
 

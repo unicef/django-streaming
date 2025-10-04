@@ -69,10 +69,10 @@ STREAMING = {
     "MANAGER_CLASS": "streaming.manager.ChangeManager",
     "QUEUES": {
         "default": {
-            "routing": ["*"],
+            "binding_keys": ["*"],
         },
-        "security": {"routing": ["user.*", "group.*"]},
-        "payments": {"routing": ["plan.*"]},
+        "security": {"binding_keys": ["user.*", "group.*"]},
+        "payments": {"binding_keys": ["plan.*"]},
     },
     "DEBUG": True,
 }

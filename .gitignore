@@ -16,5 +16,6 @@ coverage.xml
 src/streaming/version.py
 !.gitignore
 !.github
+!docs/**/.pages
 !tests/.coveragerc
 !.python-version

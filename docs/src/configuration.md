@@ -51,3 +51,25 @@ The `django-streaming` library can be configured via the `STREAMING` dictionary 
 
 *   **`CLIENT_NAME`** (string, default: `""`):
     A label for the RabbitMQ connection, visible in the RabbitMQ management interface.
+
+## Full Configuration Example
+
+```python
+
+    STREAMING = {
+        "BROKER_URL": "rabbit://user:password@localhost:5672/?virtual_host=my_vhost&exchange=my_exchange",
+        "QUEUES": {
+            "invoices": {
+                "name": "invoices_queue",
+                "binding_keys": ["invoices.*"],
+            },
+        },
+        "CLIENT_NAME": "my_app_name",
+        "RETRY_COUNT": 3,
+        "RETRY_DELAY": 1,
+        "MESSAGE_TTL": 60 * 60 * 24 * 2,  # 2 days
+        "MANAGER_CLASS": "streaming.manager.ChangeManager",
+        "LISTEN_CALLBACK": "streaming.callbacks.default_callback",
+    }
+
+```

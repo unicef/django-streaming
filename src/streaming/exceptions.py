@@ -7,6 +7,10 @@ class StreamingError(Exception):
     pass
 
 
+class StreamingException(Exception):  # noqa N818
+    pass
+
+
 class StreamingConfigError(StreamingError):
     pass
 
@@ -19,9 +23,13 @@ class StreamingBackendError(StreamingError):
     pass
 
 
-class StreamingCallbackRetryError(StreamingError):
-    """Generic exception raised when a callback fails. Message will be re-queued."""
+class CallbackSkipAck(StreamingException):  # noqa: N818
+    """Consume exception but do not acknowledge the message."""
 
 
-class StreamingCallbackFailure(StreamingError):  # noqa: N818
-    """Generic exception raised when a callback fails. Message will be discarded."""
+class CallbackRetry(StreamingException):  # noqa: N818
+    """Message will be re-queued."""
+
+
+class CallbackError(StreamingError):  # noqa: N818
+    """Message will be discarded."""

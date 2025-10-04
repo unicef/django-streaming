@@ -10,7 +10,7 @@ from pika.spec import PERSISTENT_DELIVERY_MODE, Basic, BasicProperties
 from streaming.backends import get_backend
 from streaming.backends.rabbitmq import MAX_RETRIES, Callback, RabbitMQBackend
 from streaming.event import Event
-from streaming.exceptions import StreamingCallbackFailure, StreamingCallbackRetryError, StreamingConfigError
+from streaming.exceptions import CallbackError, CallbackRetry, CallbackSkipAck, StreamingConfigError
 from streaming.utils import make_event
 
 logger = logging.getLogger(__name__)
@@ -147,8 +147,8 @@ def test_listen_no_queues_configured(settings, rabbit_server, backend, caplog):
 
 def test_listen_all_queues(stream_config, caplog):
     stream_config.QUEUES = {
-        "q1": {"routing": ["#"]},
-        "q2": {"routing": ["test.*"]},
+        "q1": {"binding_keys": ["#"]},
+        "q2": {"binding_keys": ["test.*"]},
     }
     backend: RabbitMQBackend = get_backend()
 
@@ -159,8 +159,8 @@ def test_listen_all_queues(stream_config, caplog):
 
 def test_listen_queues_subset(stream_config, caplog):
     stream_config.QUEUES = {
-        "q1": {"routing": ["#"]},
-        "q2": {"routing": ["test.*"]},
+        "q1": {"binding_keys": ["#"]},
+        "q2": {"binding_keys": ["test.*"]},
     }
     backend: RabbitMQBackend = get_backend()
 
@@ -174,33 +174,29 @@ def test_listen_queues_subset(stream_config, caplog):
         backend.listen(callback=MagicMock(), queues=["q1"])
 
 
-@pytest.mark.parametrize("ack", [True, False])
-def test_callback(backend, ack) -> None:
+def test_callback(backend) -> None:
     with mock.patch.object(backend, "channel", spec=BlockingChannel):
         user_callback = MagicMock()
+
         ch = mock.Mock(spec=BlockingChannel)
         ch.basic_ack = MagicMock()
+
         method = mock.Mock(spec=Basic.Deliver)
         method.delivery_tag = 123  # must exist!
 
-        cb = Callback("q1", backend, user_callback, ack=ack)
+        cb = Callback("q1", backend, user_callback)
         cb(ch, method, mock.Mock(spec=BasicProperties), b"")
         assert user_callback.called
-        assert ch.basic_ack.called is ack
+        assert ch.basic_ack.called
 
 
 def test_callback_error(caplog) -> None:
-    """
-    This test ensures that when a `StreamingCallbackError` is raised during message
-    processing, the system correctly logs the error, which is the entry point
-    for the retry mechanism.
-    """
     backend: RabbitMQBackend = get_backend()
 
     with mock.patch.object(backend, "channel", spec=BlockingChannel):
         # Mock a user callback that always fails with a retryable error
         user_callback = MagicMock()
-        user_callback.side_effect = StreamingCallbackRetryError
+        user_callback.side_effect = CallbackRetry
 
         # Mock the channel and message details
         ch = mock.Mock(spec=BlockingChannel)
@@ -212,7 +208,7 @@ def test_callback_error(caplog) -> None:
         properties = BasicProperties(headers={"x-retries": 1})
 
         # Create and execute the callback
-        cb = Callback("q1", backend, user_callback, ack=True)
+        cb = Callback("q1", backend, user_callback)
         cb(
             ch,
             method,
@@ -222,15 +218,15 @@ def test_callback_error(caplog) -> None:
 
         # Assert that the callback was called and the error was logged
         assert user_callback.called
-        assert "StreamingCallbackError" in caplog.text
+        assert "Retrying message" in caplog.text
 
 
-def test_callback_failure(caplog) -> None:
+def test_callback_retry(caplog) -> None:
     backend: RabbitMQBackend = get_backend()
 
     with mock.patch.object(backend, "channel", spec=BlockingChannel):
         user_callback = MagicMock()
-        user_callback.side_effect = StreamingCallbackFailure
+        user_callback.side_effect = CallbackError
         ch = mock.Mock(spec=BlockingChannel)
         ch.basic_ack = MagicMock()
         method = mock.Mock(spec=Basic.Deliver)
@@ -242,11 +238,34 @@ def test_callback_failure(caplog) -> None:
             headers={"x-retries": 1},
         )
 
-        cb = Callback("q1", backend, user_callback, ack=True)
+        cb = Callback("q1", backend, user_callback)
         cb(ch, method, properties, b"{}")
         assert user_callback.called
         assert not ch.basic_ack.called
         assert "Callback failure" in caplog.text
+
+
+def test_callback_noack(caplog) -> None:
+    backend: RabbitMQBackend = get_backend()
+
+    with mock.patch.object(backend, "channel", spec=BlockingChannel):
+        user_callback = MagicMock()
+        user_callback.side_effect = CallbackSkipAck
+        ch = mock.Mock(spec=BlockingChannel)
+        ch.basic_ack = MagicMock()
+        method = mock.Mock(spec=Basic.Deliver)
+        method.delivery_tag = 123  # must exist!
+
+        properties = BasicProperties(
+            delivery_mode=PERSISTENT_DELIVERY_MODE,
+            expiration="1000",  # milliseconds
+            headers={"x-retries": 1},
+        )
+
+        cb = Callback("q1", backend, user_callback)
+        cb(ch, method, properties, b"{}")
+        assert user_callback.called
+        assert not ch.basic_ack.called
 
 
 def test_callback_exception(caplog) -> None:
@@ -267,7 +286,7 @@ def test_callback_exception(caplog) -> None:
             headers={"x-retries": 1},
         )
 
-        cb = Callback("q1", backend, user_callback, ack=True)
+        cb = Callback("q1", backend, user_callback)
         cb(ch, method, properties, b"{}")
         assert user_callback.called
         assert not ch.basic_ack.called

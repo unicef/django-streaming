@@ -1,11 +1,13 @@
 import datetime
+import logging
 from unittest.mock import MagicMock
 from uuid import uuid4
 
 import pytest
 from pika.adapters.blocking_connection import BlockingChannel
 
-from streaming.utils import exchange_exists, make_event, parse_bool
+from streaming.callbacks import default_callback
+from streaming.utils import LevelFormatter, check_callback, exchange_exists, make_event, parse_bool
 
 
 @pytest.mark.parametrize(
@@ -61,3 +63,26 @@ def test_encoding(admin_user):
     restored = evt.unmarshal(dump)
     assert restored.key == evt.key
     assert restored.payload["uuid"] == str(uid)
+
+
+def test_check_callback():
+    def _f1(a, b, c, d, e) -> int:
+        return 1
+
+    def _f2(a, b, c, d, e) -> None:
+        return 1
+
+    assert check_callback(default_callback)
+    assert not check_callback(test_check_callback)
+    assert not check_callback(lambda a, b, c, d, e: None)
+    assert not check_callback(_f1)
+    assert not check_callback(_f2)
+    assert not check_callback(2)
+
+
+def test_formatter():
+    fmt = LevelFormatter()
+    for level in [logging.DEBUG, logging.INFO, logging.WARNING, logging.ERROR, logging.CRITICAL]:
+        fmt.format(
+            logging.LogRecord(name="name", level=level, pathname="/", lineno=1, msg="msg", args=(), exc_info=None)
+        )

@@ -10,4 +10,4 @@ JSON = dict[str, JsonT]
 
 EventType = Literal["absolute", "delta", "event"]
 PikaCallback = Callable[[BlockingChannel, Basic.Deliver, BasicProperties, bytes], None]
-UserCallback = Callable[[str, BlockingChannel, Basic.Deliver, BasicProperties, bytes], None]
+UserCallback = Callable[[str, BlockingChannel, Basic.Deliver, BasicProperties, bytes], bool]

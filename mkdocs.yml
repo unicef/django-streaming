@@ -4,6 +4,7 @@ copyright: Copyright &copy; 2025
 repo_url: https://github.com/UNICEF/django-streaming
 site_author: saxix
 site_dir: ./~build/docs
+dev_addr: 0.0.0.0:9000
 
 
 markdown_extensions:
@@ -76,7 +77,7 @@ theme:
 plugins:
   - mkdocstrings:
       default_handler: python
-#  - awesome-pages
+  - awesome-pages
   - search
 #  - include-markdown:
 #      encoding: ascii
@@ -87,15 +88,3 @@ plugins:
 #      rewrite_relative_urls: true
 #      heading_offset: 0
 #      recursive: true
-
-nav:
-    - Home: index.md
-    - Contributing: contributing.md
-    - Installation: installation.md
-    - Usage: usage.md
-    - Configuration: configuration.md
-    - CLI: cli.md
-    - Backends:
-        - Console Backend: backends/console.md
-        - Debug Backend: backends/debug.md
-        - RabbitMQ Backend: backends/rabbitmq.md

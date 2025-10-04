@@ -1,0 +1,8 @@
+title: Home
+nav:
+  - About: about.md
+  - Contributing: contributing.md
+  - Installation: onstallation.md
+  - Usage: usage.md
+  - Configuration: configuration.md
+  - Command Line: cli.md

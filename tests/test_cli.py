@@ -5,11 +5,12 @@ import pytest
 from click import ClickException
 from click.testing import CliRunner
 from django.core.exceptions import ImproperlyConfigured
+from pika.exceptions import ChannelClosedByBroker
 
 from streaming.__cli__ import assert_backend, cli
 from streaming.backends import get_backend
 from streaming.backends.rabbitmq import RabbitMQBackend
-from streaming.exceptions import AuthorizationError, StreamingConfigError
+from streaming.exceptions import AuthorizationError, CallbackRetry, StreamingConfigError
 from streaming.utils import make_event
 
 
@@ -56,8 +57,9 @@ def test_cli_configure(stream_config, runner: CliRunner, configure_server) -> No
     stream_config.BROKER_URL = "rabbit://localhost:10000?vhost=pytest&exchange=stream"
     backend = get_backend()
     with mock.patch("streaming.__cli__.assert_backend") as mocked_assert_backend:
+        mocked_assert_backend.return_value = backend
         with mock.patch.object(backend, "configure_queue_routing") as mocked_configure_queue_routing:
-            mocked_assert_backend.return_value = backend
+            mocked_configure_queue_routing.return_value = {"a": ["*"]}
             result = runner.invoke(cli, ["configure"], catch_exceptions=False)
             assert result.stderr == ""
             assert result.exit_code == 0
@@ -103,15 +105,15 @@ def test_listen_wrong_backend(settings, runner: CliRunner, caplog) -> None:
 
 
 @pytest.mark.parametrize(
-    "args",
+    ("args", "stderr", "exitcode"),
     [
-        (),
-        ("--payload",),
-        ("--pretty",),
-        ("--payload", "--pretty"),
+        ("", "", 0),
+        (["--callback", "streaming.callbacks.default_callback"], "", 0),
+        (("--callback", "-"), "is not a valid callback", 1),
+        (("--callback", "demo.callbacks.invalid"), "is not a valid callback", 1),
     ],
 )
-def test_listen_callback(stream_config, runner: CliRunner, caplog, args) -> None:
+def test_listen_callback(stream_config, runner: CliRunner, caplog, args, stderr, exitcode) -> None:
     stream_config.BROKER_URL = "rabbit://localhost:10000"
     backend = get_backend()
     evt = make_event("")
@@ -122,8 +124,31 @@ def test_listen_callback(stream_config, runner: CliRunner, caplog, args) -> None
                 "queue_name", MagicMock(), MagicMock(), MagicMock(), evt.marshall()
             )
             result = runner.invoke(cli, ["listen", *args], catch_exceptions=False)
-            assert result.stderr == ""
-            assert result.exit_code == 0
+            assert stderr in result.stderr
+            assert result.exit_code == exitcode
+
+
+@pytest.mark.parametrize(
+    ("error", "stderr", "exitcode"),
+    [
+        (ChannelClosedByBroker(1, ""), "", 0),
+        (CallbackRetry, "", 0),
+        (StreamingConfigError, "", 2),
+        (KeyboardInterrupt, "", 0),
+    ],
+)
+def test_listen_errors(
+    stream_config, runner: CliRunner, caplog, error: type[Exception], stderr: str, exitcode: int
+) -> None:
+    stream_config.BROKER_URL = "rabbit://localhost:10000"
+    backend = get_backend()
+    with mock.patch("streaming.__cli__.assert_backend") as mocked_assert_backend:
+        mocked_assert_backend.return_value = backend
+        with mock.patch.object(backend, "listen") as mocked_listen:
+            mocked_listen.side_effect = error
+            result = runner.invoke(cli, ["listen"], catch_exceptions=False)
+            assert stderr in result.stderr
+            assert result.exit_code == exitcode
 
 
 def test_purge_wrong_backend(settings, runner: CliRunner) -> None:
@@ -163,15 +188,6 @@ def test_listen_command(backend, runner: CliRunner, configure_server) -> None:
             result = runner.invoke(cli, ["listen", "--queues", "test_queue"], catch_exceptions=False)
             assert result.exit_code == 0
             mock_listen.assert_called()
-
-
-def test_listen_reload(runner: CliRunner) -> None:
-    with mock.patch("streaming.__cli__._listen"):
-        with mock.patch("django.utils.autoreload.run_with_reloader") as mocked_run_with_reloader:
-            mocked_run_with_reloader.side_effect = lambda func, *a, **kw: func()
-            result = runner.invoke(cli, ["listen", "--autoreload"], catch_exceptions=False)
-            assert result.stderr == ""
-            assert result.exit_code == 0
 
 
 def test_purge_command(stream_config, runner: CliRunner) -> None:

@@ -17,8 +17,9 @@ from streaming.utils import exchange_exists
 from ..event import Event
 from ..exceptions import (
     AuthorizationError,
-    StreamingCallbackFailure,
-    StreamingCallbackRetryError,
+    CallbackError,
+    CallbackRetry,
+    CallbackSkipAck,
     StreamingConfigError,
 )
 from ._base import BaseBackend
@@ -35,12 +36,9 @@ MAX_RETRIES = 5
 
 
 class Callback:
-    def __init__(
-        self, queue_name: str, backend: "RabbitMQBackend", user_callback: "UserCallback", ack: bool = True
-    ) -> None:
+    def __init__(self, queue_name: str, backend: "RabbitMQBackend", user_callback: "UserCallback") -> None:
         self.backend = backend
         self.user_callback: UserCallback = user_callback
-        self.ack = ack
         self.queue_name = queue_name
 
     def __call__(
@@ -48,14 +46,14 @@ class Callback:
     ) -> None:
         try:
             self.user_callback(self.queue_name, ch, method, properties, body)
-            if self.ack:
-                ch.basic_ack(delivery_tag=method.delivery_tag)  # type: ignore[arg-type]
-        except StreamingCallbackRetryError as e:
-            logger.error(f"StreamingCallbackError: {e}", exc_info=e)
+            ch.basic_ack(delivery_tag=method.delivery_tag)  # type: ignore[arg-type]
+        except CallbackSkipAck as e:
+            logger.error(f"StreamingCallbackSkipAckException: {e}", exc_info=e)
+        except CallbackRetry:
             evt: Event = Event.unmarshal(body)
             retries = int(properties.headers.get("x-retries", 0))  # type: ignore[union-attr]
             self.backend._handle_retry(evt, ch, method, retries)
-        except StreamingCallbackFailure as e:
+        except CallbackError as e:
             logger.error(f"Callback failure: {e}", exc_info=e)
         except Exception as e:
             logger.exception(f"Unexpected exception occurred: {e}", exc_info=e)
@@ -98,10 +96,13 @@ class RabbitMQBackend(BaseBackend):
             real_name = self.get_real_queue_name(alias)
             logger.debug(f"Declaring queue '{real_name}'")
             self.channel.queue_declare(queue=real_name, durable=True, arguments=None)  # type: ignore[union-attr]
-            if binding_keys := config.get("routing", []):
+            if binding_keys := config.get("binding_keys", []):
+                options = config.get("options", {})
                 for binding_key in binding_keys:
                     logger.debug("Listening on queue '%s' routed by '%s'", alias, binding_key)
-                    self.channel.queue_bind(exchange=self.exchange, queue=real_name, routing_key=binding_key)  # type: ignore[union-attr]
+                    self.channel.queue_bind(  # type: ignore[union-attr]
+                        exchange=self.exchange, queue=real_name, routing_key=binding_key, arguments=options
+                    )
                     ret[alias].append(binding_key)
             else:
                 ret[alias].append("warning no routing defined")
@@ -217,7 +218,6 @@ class RabbitMQBackend(BaseBackend):
         if self.channel is None:
             self.connect()
         self.check_channel()
-
         configured_queues = CONFIG.QUEUES
         if not configured_queues:
             logger.warning("No queues configured in settings.STREAMING['QUEUES']")
@@ -225,7 +225,7 @@ class RabbitMQBackend(BaseBackend):
         queues_to_listen = queues or configured_queues.keys()
         for queue_name in queues_to_listen:
             real_queue_name = self.get_real_queue_name(queue_name)
-            _callback = Callback(queue_name, self, callback, ack=ack)
+            _callback = Callback(queue_name, self, callback)
             self.channel.basic_consume(queue=real_queue_name, on_message_callback=_callback, auto_ack=False)  # type: ignore[union-attr]
 
         logger.info("Waiting for messages. To exit press CTRL+C")
