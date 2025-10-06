@@ -109,7 +109,7 @@ def send(routing_key: str, message: str, client_name: str, debug: bool) -> None:
         payload = {
             "message": message,
         }
-    msg: Event = make_event(payload, key="Test")
+    msg: Event = make_event(message=payload, key="Test")
     backend.publish(routing_key, msg)
     click.secho(f"Sent: {msg}")
     backend.disconnect()

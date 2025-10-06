@@ -47,12 +47,14 @@ class Event:
         )
 
     @classmethod
-    def build(cls, key: str, data: Any, value_type: "EventType") -> "Event":
+    def build(
+        cls, data: Any, value_type: "EventType" = "absolute", key: str = "N/A", message_id: str | None = None
+    ) -> "Event":
         if isinstance(data, str):
             payload: JSON = {"message": data}
         else:
             payload = data
-        return cls(key=key, payload=payload, value_type=value_type)
+        return cls(key=key, payload=payload, value_type=value_type, message_id=message_id)
 
     def as_dict(self) -> dict[str, Any]:
         return {

@@ -10,11 +10,10 @@ from django.db import models
 from pika.adapters.blocking_connection import BlockingChannel
 from pika.exceptions import ChannelClosedByBroker
 
-from streaming.types import UserCallback
+from streaming.types import JSON, EventType, UserCallback
 
 if TYPE_CHECKING:
     from streaming.event import Event
-    from streaming.types import JSON
 
 MINUTE = 60
 HOUR = MINUTE * 60
@@ -52,10 +51,17 @@ def parse_bool(value: Any) -> bool:
     return value in [1, True]
 
 
-def make_event(message: "str | JSON", *, key: str = "") -> "Event":
+def make_event(
+    message: "str|JSON", *, value_type: "EventType" = "absolute", key: str = "N/A", message_id: str | None = None
+) -> "Event":
     from streaming.event import Event
 
-    return Event.build(key=key, data=message, value_type="absolute")
+    return Event.build(
+        key=key,
+        data=message,
+        value_type=value_type,
+        message_id=message_id,
+    )
 
 
 def get_local_ip() -> str:

@@ -1,3 +1,5 @@
+from streaming.utils import make_event
+
 # Usage
 
 `django-streaming` provides a flexible framework for streaming data from your Django applications to various backends.
@@ -18,8 +20,20 @@ Then, in your Django application, you can publish messages:
 
 ```python
 from streaming.manager import manager
+from streaming.utils import make_event
 
-manager.publish("Your message here!")
+manager.notify("invoice.create", make_event("Your message here!"))
+
+```
+
+OR
+
+```python
+from streaming.manager import manager
+from streaming.utils import make_event
+
+manager.notify("invoice.create", make_event("Your message here!", key="key", message_id="my_id"))
+
 ```
 
 ## Using the Threaded Change Manager
