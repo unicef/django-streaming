@@ -66,6 +66,7 @@ INSTALLED_APPS = (
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 STREAMING = {
     "BROKER_URL": os.environ.get("BROKER_URL", "console://"),
+    "MANAGER_CLASS": "streaming.manager.ChangeManager",
     "QUEUES": {
         "default": {
             "binding_keys": ["*"],

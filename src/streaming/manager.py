@@ -4,6 +4,7 @@ import queue
 import threading
 from typing import TYPE_CHECKING, Any
 
+from django.db import models
 from django.db.models import Model
 from django.db.models.signals import post_save
 from django.utils.module_loading import import_string
@@ -21,22 +22,38 @@ logger = logging.getLogger(__name__)
 
 not_provided = object()
 
+EXCLUDED_FIELDS = [
+    models.BinaryField,
+    models.FileField,
+    models.ImageField,
+]
+
+
+def get_serializable_fields(model: type[Model]) -> list[str]:
+    return [f.name for f in model._meta.fields if f.__class__ not in EXCLUDED_FIELDS]
+
 
 class ChangeManager:
     def __init__(self) -> None:
-        self._registry: set[type[Model]] = set()
+        self._registry: dict[type[Model], list[str]] = {}
+        self._registrations: list[str] = []
         self.backend: BaseBackend = get_backend()
 
-    def register(self, model: type[Model], receiver: Any = None) -> None:
+    def register(self, model: type[Model], fields: list[str] | None = None, receiver: Any = None) -> None:
         logger.debug("Registering %s", model)
-        self._registry.add(model)
-        post_save.connect(receiver or self._post_save_receiver, sender=model, weak=False)
+        dispatch_uid = f"{id(self)}_{model.__name__}"
+        if dispatch_uid in self._registrations:
+            post_save.disconnect(dispatch_uid=dispatch_uid, sender=model)
+        else:
+            self._registrations.append(dispatch_uid)
+        self._registry[model] = fields or get_serializable_fields(model)
+        post_save.connect(receiver or self._post_save_receiver, sender=model, weak=False, dispatch_uid=dispatch_uid)
 
     def _post_save_receiver(self, sender: type[Model], instance: Model, created: bool, **kwargs: Any) -> None:
         logger.debug("post_save event for %s", sender)
         payload = {"model": sender.__name__, "pk": instance.pk, "created": created, "fields": {}}
-        for field in sender._meta.fields:
-            payload["fields"][field.name] = str(getattr(instance, field.name))
+        for field_name in self._registry[sender]:
+            payload["fields"][field_name] = str(getattr(instance, field_name))
         routing_key = f"{sender._meta.app_label}.{sender._meta.model_name}.save"
         message: Event = make_event(payload)
         self.notify(routing_key, message)
