@@ -10,6 +10,7 @@ from django.utils.module_loading import import_string
 
 from streaming.backends import get_backend
 
+from .exceptions import StreamingConfigError
 from .utils import make_event
 
 if TYPE_CHECKING:
@@ -37,7 +38,7 @@ class ChangeManager:
         for field in sender._meta.fields:
             payload["fields"][field.name] = str(getattr(instance, field.name))
         routing_key = f"{sender._meta.app_label}.{sender._meta.model_name}.save"
-        message: Event = make_event(payload, key=routing_key)
+        message: Event = make_event(payload)
         self.notify(routing_key, message)
 
     def notify(self, routing_key: str, event: "Event") -> bool:
@@ -83,7 +84,10 @@ class ThreadedChangeManager(ChangeManager):
 def get_manager() -> ChangeManager:
     from streaming.config import CONFIG
 
-    return import_string(CONFIG.MANAGER_CLASS)()  # type: ignore[no-any-return]
+    try:
+        return import_string(CONFIG.MANAGER_CLASS)()  # type: ignore[no-any-return]
+    except (ImportError, AttributeError):
+        raise StreamingConfigError("Invalid manager class. Check your django-streaming configuration.") from None
 
 
 def initialize_engine(reset: bool = False) -> ChangeManager | ThreadedChangeManager:

@@ -213,7 +213,7 @@ def test_callback_error(caplog) -> None:
             ch,
             method,
             properties,
-            b'{"id":1,"payload":{},"key":"event","value_type":"absolute","timestamp":"2025-10-02T15:45:30+00:00"}',
+            b'{"id":1,"payload":{},"value_type":"absolute","timestamp":"2025-10-02T15:45:30+00:00"}',
         )
 
         # Assert that the callback was called and the error was logged
@@ -302,7 +302,7 @@ def test_backend__handle_retry(configure_server) -> None:
 
     with mock.patch.object(backend, "channel", spec=BlockingChannel):
         backend.connect()
-        message = Event(key="event", value_type="absolute", payload={})
+        message = Event(value_type="absolute", payload={})
 
         # Mock the method that publishes messages
         backend._basic_publish = MagicMock()
@@ -326,7 +326,7 @@ def test_backend__handle_retry(configure_server) -> None:
 def test_backend_max_retry(caplog, configure_server) -> None:
     backend = get_backend()
     backend.connect()
-    message = Event(key="event", value_type="absolute", payload={})
+    message = Event(value_type="absolute", payload={})
     backend._basic_publish = MagicMock()
     ch = mock.Mock(spec=BlockingChannel)
     ch.basic_ack = MagicMock()

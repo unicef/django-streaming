@@ -45,23 +45,22 @@ def test_exchange_exists():
 
 
 def test_make_event_with_string_message():
-    event = make_event("hello", key="test_event")
+    event = make_event("hello")
     assert isinstance(event.timestamp, datetime.datetime)
-    assert sorted(event.as_dict().keys()) == ["id", "key", "payload", "timestamp", "value_type"]
+    assert sorted(event.as_dict().keys()) == ["id", "payload", "timestamp", "value_type"]
 
 
 def test_make_event_with_json_message():
-    event = make_event({"key": "value", "number": 123}, key="json_event")
+    event = make_event({"label": "Name", "number": 123})
     assert isinstance(event.timestamp, datetime.datetime)
-    assert sorted(event.as_dict().keys()) == ["id", "key", "payload", "timestamp", "value_type"]
+    assert sorted(event.as_dict().keys()) == ["id", "payload", "timestamp", "value_type"]
 
 
 def test_encoding(admin_user):
     uid = uuid4()
-    evt = make_event({"user": admin_user, "uuid": uid, "str": "test"}, key="user.save")
+    evt = make_event({"user": admin_user, "uuid": uid, "str": "test"})
     dump = evt.marshall()
     restored = evt.unmarshal(dump)
-    assert restored.key == evt.key
     assert restored.payload["uuid"] == str(uid)
 
 

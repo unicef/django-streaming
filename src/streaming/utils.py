@@ -51,13 +51,10 @@ def parse_bool(value: Any) -> bool:
     return value in [1, True]
 
 
-def make_event(
-    message: "str|JSON", *, value_type: "EventType" = "absolute", key: str = "N/A", message_id: str | None = None
-) -> "Event":
+def make_event(message: "str|JSON", *, value_type: "EventType" = "absolute", message_id: str | None = None) -> "Event":
     from streaming.event import Event
 
     return Event.build(
-        key=key,
         data=message,
         value_type=value_type,
         message_id=message_id,

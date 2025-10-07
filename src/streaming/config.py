@@ -17,7 +17,7 @@ class StreamingConfig:
         "RETRY_COUNT": 3,
         "RETRY_DELAY": 1,
         "MESSAGE_TTL": 60 * 60 * 24 * 2,  # 2 days
-        "MANAGER_CLASS": "streaming.manager.ChangeManager",
+        "MANAGER_CLASS": "streaming.manager.ThreadedChangeManager",
         "LISTEN_CALLBACK": "streaming.callbacks.default_callback",
     }
 

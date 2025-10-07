@@ -6,8 +6,8 @@ from streaming.event import Event
 @pytest.mark.parametrize(
     "args",
     [
-        {"key": "routing.key", "payload": "message"},
-        {"key": "routing.key", "payload": {"key": "value"}},
+        {"message_id": "123", "payload": "message"},
+        {"message_id": "456", "payload": {"key": "value"}},
     ],
 )
 def test_event_object(args):

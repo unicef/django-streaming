@@ -40,7 +40,6 @@ def test_lifecycle(manager: ThreadedChangeManager):
     assert len(manager.backend.messages) == 1
     msg = manager.backend.messages[-1]
     assert msg[0] == "auth.user.save"
-    assert msg[1].key == "auth.user.save"
     assert msg[1].payload["created"]
 
 

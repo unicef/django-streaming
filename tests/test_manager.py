@@ -33,5 +33,4 @@ def test_lifecycle(manager: ChangeManager):
     assert len(manager.backend.messages) == 1
     rk, msg = manager.backend.messages[-1]
     assert rk == "auth.user.save"
-    assert msg.key == "auth.user.save"
     assert msg.payload["created"]

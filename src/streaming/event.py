@@ -13,14 +13,12 @@ class Event:
     def __init__(
         self,
         *,
-        key: str,
         payload: "JSON",
         value_type: "EventType" = "absolute",
         timestamp: datetime | None = None,
         message_id: str | None = None,
     ) -> None:
         self.timestamp = timestamp or datetime.now()
-        self.key = key
         self.payload = payload
         self.value_type = value_type
         self.id = message_id or uuid.uuid4()
@@ -30,7 +28,6 @@ class Event:
             {
                 "id": self.id,
                 "timestamp": self.timestamp.isoformat(),
-                "key": self.key,
                 "payload": self.payload,
             },
             cls=StreamingJSONEncoder,
@@ -42,7 +39,6 @@ class Event:
         return cls(
             message_id=data["id"],
             payload=data["payload"],
-            key=data["key"],
             timestamp=datetime.fromisoformat(data["timestamp"]),
         )
 
@@ -54,13 +50,12 @@ class Event:
             payload: JSON = {"message": data}
         else:
             payload = data
-        return cls(key=key, payload=payload, value_type=value_type, message_id=message_id)
+        return cls(payload=payload, value_type=value_type, message_id=message_id)
 
     def as_dict(self) -> dict[str, Any]:
         return {
             "id": self.id,
             "timestamp": self.timestamp.isoformat(),
-            "key": self.key,
             "payload": self.payload,
             "value_type": self.value_type,
         }
