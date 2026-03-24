@@ -25,9 +25,9 @@ def pytest_addoption(parser):
 
 @pytest.fixture
 def configure_server(request):
-    import responses
-    from pyrabbit2.api import Client
-    from pyrabbit2.http import HTTPError
+    import responses  # noqa
+    from pyrabbit2.api import Client  # noqa
+    from pyrabbit2.http import HTTPError  # noqa
 
     responses.stop()
     client = Client("localhost:10001", "guest", "guest")
@@ -36,7 +36,7 @@ def configure_server(request):
             client.delete_vhost(VHOST)
     client.create_vhost(VHOST)
     client.set_vhost_permissions(VHOST, "guest", ".*", ".*", ".*")
-    from streaming.backends import get_backend
+    from streaming.backends import get_backend  # noqa
 
     backend = get_backend()
     backend.connect()
@@ -56,7 +56,7 @@ def rabbit_server(configure_server):
 
 class ConfigWrapper:
     def __init__(self) -> None:
-        from streaming.config import CONFIG
+        from streaming.config import CONFIG  # noqa
 
         object.__setattr__(self, "_to_restore", {})
         object.__setattr__(self, "_archived", CONFIG._overrides)

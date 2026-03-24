@@ -1,6 +1,6 @@
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v5.0.0
+    rev: v6.0.0
     hooks:
       - id: end-of-file-fixer
       - id: trailing-whitespace
@@ -28,12 +28,14 @@ repos:
       - id: pyproject-fmt
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.11.10
+    rev: v0.15.2
     hooks:
-      - id: ruff
-      - id: ruff-format
-        args:
-          - --check
+        - id: ruff
+        - id: ruff-format
+          args:
+              - --check
+              - --config
+              - ruff.toml
 
   - repo: https://github.com/saxix/pch
     rev: '0.1'

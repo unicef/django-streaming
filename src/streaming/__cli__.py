@@ -56,7 +56,7 @@ def configure_logging(debug: bool, loggers: Iterable[str] = ("streaming",)) -> N
 def cli() -> None:
     """Streaming CLI."""
     try:
-        import django
+        import django  # noqa
 
         django.setup()
     except ModuleNotFoundError as e:
@@ -69,7 +69,7 @@ def cli() -> None:
 @click.option("--queues/--no-queues", "queues", is_flag=True, default=False, help="Debug mode")
 @click.option("--debug", is_flag=True, help="Debug mode")
 def configure(queues: bool = False, debug: bool = False) -> None:
-    from streaming.config import CONFIG
+    from streaming.config import CONFIG  # noqa
 
     routing = None
     configure_logging(debug)
@@ -161,9 +161,9 @@ def listen(  # noqa PLR0913
 @cli.command()
 def purge() -> None:
     """Purges all messages from the configured queues."""
-    from streaming.backends.rabbitmq import RabbitMQBackend
-    from streaming.config import CONFIG
-    from streaming.manager import initialize_engine
+    from streaming.backends.rabbitmq import RabbitMQBackend  # noqa
+    from streaming.config import CONFIG  # noqa
+    from streaming.manager import initialize_engine  # noqa
 
     manager = initialize_engine(True)
     backend = manager.backend
@@ -184,7 +184,7 @@ def purge() -> None:
 @cli.command()
 def check() -> None:
     """Checks the streaming configuration and connection."""
-    from streaming.config import CONFIG
+    from streaming.config import CONFIG  # noqa
 
     click.secho("System Configuration:")
     config_dict = dict(CONFIG._parsed)

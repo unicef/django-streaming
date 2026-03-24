@@ -11,7 +11,7 @@ class DemoConfig(AppConfig):
     name = "demo"
 
     def ready(self):
-        from django.contrib.auth.models import User
+        from django.contrib.auth.models import User  # noqa
 
         manager = initialize_engine()
         manager.register(User)

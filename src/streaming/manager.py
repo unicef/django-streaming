@@ -99,7 +99,7 @@ class ThreadedChangeManager(ChangeManager):
 
 
 def get_manager() -> ChangeManager:
-    from streaming.config import CONFIG
+    from streaming.config import CONFIG  # noqa
 
     try:
         return import_string(CONFIG.MANAGER_CLASS)()  # type: ignore[no-any-return]

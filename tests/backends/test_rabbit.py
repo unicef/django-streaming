@@ -34,7 +34,7 @@ def test_init_logic(backend: RabbitMQBackend, caplog) -> None:
 
 @pytest.mark.withoutresponses
 def test_manager(backend: RabbitMQBackend, caplog) -> None:
-    from streaming.manager import initialize_engine
+    from streaming.manager import initialize_engine  # noqa
 
     manager = initialize_engine(True)
     assert not manager.backend._connection
@@ -121,7 +121,7 @@ def test_error(settings, caplog) -> None:
         "RETRY_COUNT": 1,
         "RETRY_DELAY": 0.1,
     }
-    from streaming.config import CONFIG
+    from streaming.config import CONFIG  # noqa
 
     backend = RabbitMQBackend(CONFIG.BROKER_URL)
     with mock.patch.object(backend, "configure_queue_routing"):
