@@ -16,8 +16,8 @@ def backend(settings) -> ConsoleBackend:
 
 
 def test_publish(backend: ConsoleBackend) -> None:
-    import io
-    from contextlib import redirect_stdout
+    import io  # noqa
+    from contextlib import redirect_stdout  # noqa
 
     f = io.StringIO()
     with redirect_stdout(f):

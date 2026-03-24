@@ -1,22 +1,27 @@
 import logging
 import sys
+import typing
 
 from colorama import Fore
-from pika.adapters.blocking_connection import BlockingChannel
-from pika.spec import Basic, BasicProperties
 
 from streaming.backends.rabbitmq import MAX_RETRIES
 from streaming.event import Event
 from streaming.exceptions import CallbackRetry, CallbackSkipAck
 
+if typing.TYPE_CHECKING:
+    from pika.adapters.blocking_connection import BlockingChannel
+    from pika.spec import Basic, BasicProperties
+
 logger = logging.getLogger(__name__)
 
 
-def invalid(ch: BlockingChannel, method: Basic.Deliver, properties: BasicProperties, body: bytes) -> bool:
+def invalid(ch: "BlockingChannel", method: "Basic.Deliver", properties: "BasicProperties", body: bytes) -> bool:
     return True
 
 
-def nack(queue_name: str, ch: BlockingChannel, method: Basic.Deliver, properties: BasicProperties, body: bytes) -> bool:
+def nack(
+    queue_name: str, ch: "BlockingChannel", method: "Basic.Deliver", properties: "BasicProperties", body: bytes
+) -> bool:
     logger.debug("Invoking default callback")
     message: Event = Event.unmarshal(body)
     ack = f"{Fore.RED}NACK{Fore.RESET}"
@@ -27,7 +32,7 @@ def nack(queue_name: str, ch: BlockingChannel, method: Basic.Deliver, properties
 
 
 def retry_delay(
-    queue_name: str, ch: BlockingChannel, method: Basic.Deliver, properties: BasicProperties, body: bytes
+    queue_name: str, ch: "BlockingChannel", method: "Basic.Deliver", properties: "BasicProperties", body: bytes
 ) -> bool:
     attempts = int(properties.headers.get("x-retries", 0))  # type: ignore[union-attr]
     if attempts < MAX_RETRIES:
@@ -41,7 +46,7 @@ def retry_delay(
 
 
 def retry_noack(
-    queue_name: str, ch: BlockingChannel, method: Basic.Deliver, properties: BasicProperties, body: bytes
+    queue_name: str, ch: "BlockingChannel", method: "Basic.Deliver", properties: "BasicProperties", body: bytes
 ) -> bool:
     message: Event = Event.unmarshal(body)
     ack = f"{Fore.RED}NACK{Fore.RESET}"

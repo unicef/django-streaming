@@ -52,7 +52,7 @@ def parse_bool(value: Any) -> bool:
 
 
 def make_event(message: "str|JSON", *, value_type: "EventType" = "absolute", message_id: str | None = None) -> "Event":
-    from streaming.event import Event
+    from streaming.event import Event  # noqa
 
     return Event.build(
         data=message,

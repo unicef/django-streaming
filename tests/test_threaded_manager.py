@@ -1,17 +1,21 @@
+import typing
+
 import pytest
 from django.contrib.auth.models import User
 
-from streaming.manager import ThreadedChangeManager
 from streaming.utils import make_event
+
+if typing.TYPE_CHECKING:
+    from streaming.manager import ThreadedChangeManager
 
 pytestmark = pytest.mark.django_db
 
 
 @pytest.fixture
-def manager(settings) -> ThreadedChangeManager:
-    from django.core.signals import setting_changed
+def manager(settings) -> "ThreadedChangeManager":
+    from django.core.signals import setting_changed  # noqa
 
-    from streaming.manager import initialize_engine
+    from streaming.manager import initialize_engine  # noqa
 
     settings.STREAMING = {
         "BROKER_URL": "debug://",
@@ -21,20 +25,20 @@ def manager(settings) -> ThreadedChangeManager:
     return initialize_engine(True)
 
 
-def test_register(manager: ThreadedChangeManager):
+def test_register(manager: "ThreadedChangeManager"):
     manager.register(User)
     assert len(manager._registry) == 1
     manager.register(User)
     assert len(manager._registry) == 1
 
 
-def test_notify(manager: ThreadedChangeManager):
+def test_notify(manager: "ThreadedChangeManager"):
     manager.notify(make_event("test"), "a.b")
     manager.stop()
     assert manager.backend.messages
 
 
-def test_lifecycle(manager: ThreadedChangeManager):
+def test_lifecycle(manager: "ThreadedChangeManager"):
     manager.register(User)
     User.objects.create(username="test")
     assert len(manager.backend.messages) == 1
@@ -43,7 +47,7 @@ def test_lifecycle(manager: ThreadedChangeManager):
     assert msg[1].payload["created"]
 
 
-def test_stop(manager: ThreadedChangeManager):
+def test_stop(manager: "ThreadedChangeManager"):
     manager.register(User)
     manager.notify("a.b", make_event("test"))
     manager.stop()
