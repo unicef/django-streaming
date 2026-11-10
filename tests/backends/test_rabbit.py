@@ -3,6 +3,7 @@ import socket
 from unittest import mock
 from unittest.mock import MagicMock
 
+import pika.exceptions
 import pytest
 from pika.adapters.blocking_connection import BlockingChannel
 from pika.spec import PERSISTENT_DELIVERY_MODE, Basic, BasicProperties
@@ -338,4 +339,45 @@ def test_backend_max_retry(caplog, configure_server) -> None:
         backend._handle_retry(message, ch, method, MAX_RETRIES + 1)
         assert "Dropping message" in caplog.text
 
+    assert not backend._basic_publish.called
+
+
+def _retry_fixtures(configure_server):
+    backend = get_backend()
+    backend.connect()
+    message = Event(value_type="absolute", payload={})
+    ch = mock.Mock(spec=BlockingChannel)
+    method = mock.Mock(spec=Basic.Deliver)
+    method.delivery_tag = 123
+    method.routing_key = "123"
+    return backend, message, ch, method
+
+
+def test_backend_handle_retry_acks_after_publish(configure_server) -> None:
+    backend, message, ch, method = _retry_fixtures(configure_server)
+    calls = mock.Mock()
+    ch.basic_ack = calls.ack
+    backend._basic_publish = calls.publish
+    backend._handle_retry(message, ch, method, 1)
+    assert [c[0] for c in calls.mock_calls] == ["publish", "ack"]
+    assert calls.publish.call_args.kwargs["mandatory"] is True
+
+
+def test_backend_handle_retry_publish_failure_requeues(caplog, configure_server) -> None:
+    backend, message, ch, method = _retry_fixtures(configure_server)
+    ch.is_open = True
+    backend._basic_publish = MagicMock(side_effect=pika.exceptions.UnroutableError([]))
+    backend._handle_retry(message, ch, method, 1)
+    assert not ch.basic_ack.called
+    ch.basic_nack.assert_called_once_with(123, requeue=True)
+
+
+def test_backend_handle_retry_setup_failure_channel_closed(configure_server) -> None:
+    backend, message, ch, method = _retry_fixtures(configure_server)
+    ch.is_open = False
+    ch.queue_bind.side_effect = pika.exceptions.ChannelClosedByBroker(404, "NOT_FOUND")
+    backend._basic_publish = MagicMock()
+    with pytest.raises(pika.exceptions.ChannelClosedByBroker):
+        backend._handle_retry(message, ch, method, 1)
+    assert not ch.basic_ack.called
     assert not backend._basic_publish.called

@@ -134,6 +134,8 @@ class RabbitMQBackend(BaseBackend):
                     )
                 )
                 self.channel = self._connection.channel()
+                # Publisher confirms: basic_publish raises if the broker nacks or (with mandatory) cannot route
+                self.channel.confirm_delivery()
                 return
             except (
                 pika.exceptions.AuthenticationError,
@@ -175,12 +177,18 @@ class RabbitMQBackend(BaseBackend):
     # Listener
 
     def _basic_publish(
-        self, message: "Event", routing_key: str, retry_count: int = 0, exchange: str | None = None
+        self,
+        message: "Event",
+        routing_key: str,
+        retry_count: int = 0,
+        exchange: str | None = None,
+        mandatory: bool = False,
     ) -> None:
         self.check_channel()
         self.channel.basic_publish(  # type: ignore[union-attr]
             exchange=exchange or self.exchange,
             routing_key=routing_key,
+            mandatory=mandatory,
             body=message.marshall(),
             properties=pika.BasicProperties(
                 delivery_mode=pika.spec.PERSISTENT_DELIVERY_MODE,
@@ -190,15 +198,24 @@ class RabbitMQBackend(BaseBackend):
         )
 
     def _handle_retry(self, message: "Event", ch: "BlockingChannel", method: "Basic.Deliver", retries: int) -> None:
-        ch.basic_ack(method.delivery_tag)  # type: ignore[arg-type]
-        if retries < MAX_RETRIES:
-            delay = 2000 * (2**retries)  # ms (exponential backoff)
-            delay_queue = f"{self.exchange}_retry_{method.routing_key}_{delay}ms"
-            logger.debug(
-                f"Retrying message {message.id} ({retries + 1}/{MAX_RETRIES}) "
-                f"with routing key '{method.routing_key}' in {delay / 1000}s"
-            )
+        """Schedule a delayed retry.
 
+        The original message is acknowledged only after the retry message has been
+        published and confirmed by the broker. If anything fails, it is left unacknowledged
+        (requeued when the channel is still open, redelivered by the broker otherwise).
+        """
+        if retries >= MAX_RETRIES:
+            logger.error(f"Dropping message {message.id} after {MAX_RETRIES} retries")
+            ch.basic_ack(method.delivery_tag)  # type: ignore[arg-type]
+            return
+
+        delay = 2000 * (2**retries)  # ms (exponential backoff)
+        delay_queue = f"{self.exchange}_retry_{method.routing_key}_{delay}ms"
+        logger.debug(
+            f"Retrying message {message.id} ({retries + 1}/{MAX_RETRIES}) "
+            f"with routing key '{method.routing_key}' in {delay / 1000}s"
+        )
+        try:
             # Declare a delay queue with TTL
             ch.queue_declare(
                 delay_queue,
@@ -210,9 +227,23 @@ class RabbitMQBackend(BaseBackend):
                 },
             )
             ch.queue_bind(delay_queue, self.retry_exchange, routing_key=delay_queue)
-            self._basic_publish(message, routing_key=delay_queue, retry_count=retries + 1, exchange=self.retry_exchange)
-        else:
-            logger.error(f"Dropping message {message.id} after {MAX_RETRIES} retries")
+            self._basic_publish(
+                message,
+                routing_key=delay_queue,
+                retry_count=retries + 1,
+                exchange=self.retry_exchange,
+                mandatory=True,
+            )
+        except Exception as e:
+            logger.exception(f"Failed to schedule retry for message {message.id}; leaving it unacknowledged: {e}")
+            if ch.is_open:
+                # Channel still usable: return the message to the queue instead of leaving it stuck
+                ch.basic_nack(method.delivery_tag, requeue=True)  # type: ignore[arg-type]
+            else:
+                # Channel closed: broker redelivers unacked messages automatically
+                raise
+            return
+        ch.basic_ack(method.delivery_tag)  # type: ignore[arg-type]
 
     def listen(self, callback: "UserCallback", queues: list[str] | None = None, ack: bool = True) -> None:
         if self.channel is None:
