@@ -19,6 +19,7 @@ class StreamingConfig:
         "MESSAGE_TTL": 60 * 60 * 24 * 2,  # 2 days
         "MANAGER_CLASS": "streaming.manager.ThreadedChangeManager",
         "LISTEN_CALLBACK": "streaming.callbacks.default_callback",
+        "CALLBACK_RETRY_COUNT": 5,
     }
 
     def __init__(self) -> None:
