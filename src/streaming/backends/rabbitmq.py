@@ -59,41 +59,40 @@ class Callback:
         except Exception as e:
             logger.exception(f"Unexpected exception occurred: {e}", exc_info=e)
 
+    def _handle_exhausted(
+        self, ch: "BlockingChannel", method: "Basic.Deliver", properties: "BasicProperties", body: bytes
+    ) -> None:
+        """Save an exhausted message before acknowledging the original delivery."""
+        message_id = Event.unmarshal(body).id
+        queue = f"{self.backend.get_real_queue_name(self.queue_name)}_exhausted"
+        exchange = self.backend.retry_exchange
+        try:
+            ch.queue_declare(queue=queue, durable=True)
+            ch.queue_bind(queue=queue, exchange=exchange, routing_key=queue)
 
-def _handle_exhausted(
-    self, ch: "BlockingChannel", method: "Basic.Deliver", properties: "BasicProperties", body: bytes
-) -> None:
-    """Save an exhausted message before acknowledging the original delivery."""
-    message_id = Event.unmarshal(body).id
-    queue = f"{self.backend.get_real_queue_name(self.queue_name)}_exhausted"
-    exchange = self.backend.retry_exchange
-    try:
-        ch.queue_declare(queue=queue, durable=True)
-        ch.queue_bind(queue=queue, exchange=exchange, routing_key=queue)
+            headers = dict(properties.headers or {})
+            for key in ("CC", "BCC"):
+                if key in headers:
+                    headers[f"x-original-{key}"] = headers.pop(key)
+            headers.update({"x-original-exchange": method.exchange, "x-original-routing-key": method.routing_key})
+            if properties.user_id is not None:
+                headers["x-original-user-id"] = properties.user_id
 
-        headers = dict(properties.headers or {})
-        for key in ("CC", "BCC"):
-            if key in headers:
-                headers[f"x-original-{key}"] = headers.pop(key)
-        headers.update({"x-original-exchange": method.exchange, "x-original-routing-key": method.routing_key})
-        if properties.user_id is not None:
-            headers["x-original-user-id"] = properties.user_id
+            saved = copy(properties)
+            saved.headers = headers
+            saved.delivery_mode = pika.spec.PERSISTENT_DELIVERY_MODE
+            saved.expiration = None
+            saved.user_id = None
+            ch.basic_publish(exchange=exchange, routing_key=queue, body=body, properties=saved, mandatory=True)
+        except Exception:
+            logger.exception("Failed to save exhausted message %s to %s", message_id, queue)
+            if not ch.is_open:
+                raise
+            ch.basic_nack(method.delivery_tag, requeue=True)  # type: ignore[arg-type]
+            return
 
-        saved = copy(properties)
-        saved.headers = headers
-        saved.delivery_mode = pika.spec.PERSISTENT_DELIVERY_MODE
-        saved.expiration = None
-        saved.user_id = None
-        ch.basic_publish(exchange=exchange, routing_key=queue, body=body, properties=saved, mandatory=True)
-    except Exception:
-        logger.exception("Failed to save exhausted message %s to %s", message_id, queue)
-        if not ch.is_open:
-            raise
-        ch.basic_nack(method.delivery_tag, requeue=True)  # type: ignore[arg-type]
-        return
-
-    ch.basic_ack(method.delivery_tag)  # type: ignore[arg-type]
-    logger.error("Saved exhausted message %s to %s", message_id, queue)
+        ch.basic_ack(method.delivery_tag)  # type: ignore[arg-type]
+        logger.error("Saved exhausted message %s to %s", message_id, queue)
 
 
 class RabbitMQBackend(BaseBackend):
