@@ -9,7 +9,7 @@ from pika.adapters.blocking_connection import BlockingChannel
 from pika.spec import PERSISTENT_DELIVERY_MODE, Basic, BasicProperties
 
 from streaming.backends import get_backend
-from streaming.backends.rabbitmq import MAX_RETRIES, Callback, RabbitMQBackend
+from streaming.backends.rabbitmq import Callback, RabbitMQBackend
 from streaming.event import Event
 from streaming.exceptions import CallbackError, CallbackRetry, CallbackSkipAck, StreamingConfigError
 from streaming.utils import make_event
@@ -20,6 +20,11 @@ logger = logging.getLogger(__name__)
 @pytest.fixture
 def backend(stream_config, rabbit_server) -> RabbitMQBackend:
     return get_backend()
+
+
+@pytest.fixture
+def callback_backend() -> RabbitMQBackend:
+    return RabbitMQBackend("rabbit://localhost:10000")
 
 
 @pytest.mark.withoutresponses
@@ -146,24 +151,24 @@ def test_listen_no_queues_configured(settings, rabbit_server, backend, caplog):
             assert "No queues configured" in caplog.text
 
 
-def test_listen_all_queues(stream_config, caplog):
+def test_listen_all_queues(stream_config, callback_backend: RabbitMQBackend, caplog):
     stream_config.QUEUES = {
         "q1": {"binding_keys": ["#"]},
         "q2": {"binding_keys": ["test.*"]},
     }
-    backend: RabbitMQBackend = get_backend()
+    backend = callback_backend
 
     with mock.patch.object(backend, "channel", spec=BlockingChannel) as mock_channel:
         backend.listen(callback=MagicMock())
         assert mock_channel.queue_bind.call_count == 0
 
 
-def test_listen_queues_subset(stream_config, caplog):
+def test_listen_queues_subset(stream_config, callback_backend: RabbitMQBackend, caplog):
     stream_config.QUEUES = {
         "q1": {"binding_keys": ["#"]},
         "q2": {"binding_keys": ["test.*"]},
     }
-    backend: RabbitMQBackend = get_backend()
+    backend = callback_backend
 
     with mock.patch.object(backend, "channel", spec=BlockingChannel) as mocked_channel:
         mocked_channel.basic_consume.side_effect = None
@@ -191,8 +196,8 @@ def test_callback(backend) -> None:
         assert ch.basic_ack.called
 
 
-def test_callback_error(caplog) -> None:
-    backend: RabbitMQBackend = get_backend()
+def test_callback_error(callback_backend: RabbitMQBackend, caplog) -> None:
+    backend = callback_backend
 
     with mock.patch.object(backend, "channel", spec=BlockingChannel):
         # Mock a user callback that always fails with a retryable error
@@ -244,6 +249,73 @@ def test_callback_retry(caplog) -> None:
         assert user_callback.called
         assert not ch.basic_ack.called
         assert "Callback failure" in caplog.text
+
+
+def test_callback_exhausted_retry(callback_backend: RabbitMQBackend) -> None:
+    callback = Callback("q1", callback_backend, MagicMock(side_effect=CallbackRetry))
+    ch = mock.Mock(spec=BlockingChannel)
+    method = mock.Mock(spec=Basic.Deliver, delivery_tag=123, exchange="source", routing_key="some.key")
+    headers = {"x-retries": 5, "CC": ["other"], "BCC": ["private"], "custom": "value"}
+    properties = BasicProperties(
+        headers=headers.copy(), expiration="1000", user_id="original", content_type="application/json"
+    )
+    body = Event(value_type="absolute", payload={}).marshall()
+
+    callback(ch, method, properties, body)
+
+    queue = f"{callback_backend.get_real_queue_name('q1')}_exhausted"
+    assert ch.mock_calls == [
+        mock.call.queue_declare(queue=queue, durable=True),
+        mock.call.queue_bind(queue=queue, exchange=callback_backend.retry_exchange, routing_key=queue),
+        mock.call.basic_publish(
+            exchange=callback_backend.retry_exchange, routing_key=queue, body=body, properties=mock.ANY, mandatory=True
+        ),
+        mock.call.basic_ack(123),
+    ]
+    saved = ch.basic_publish.call_args.kwargs["properties"]
+    assert saved is not properties
+    assert (saved.delivery_mode, saved.expiration, saved.user_id, saved.content_type) == (
+        PERSISTENT_DELIVERY_MODE,
+        None,
+        None,
+        properties.content_type,
+    )
+    assert saved.headers == {
+        "x-retries": 5,
+        "custom": "value",
+        "x-original-CC": ["other"],
+        "x-original-BCC": ["private"],
+        "x-original-exchange": "source",
+        "x-original-routing-key": "some.key",
+        "x-original-user-id": "original",
+    }
+    assert (properties.headers, properties.expiration, properties.user_id, properties.delivery_mode) == (
+        headers,
+        "1000",
+        "original",
+        None,
+    )
+
+
+@pytest.mark.parametrize("channel_open", [True, False])
+def test_callback_exhausted_retry_failure(callback_backend: RabbitMQBackend, channel_open: bool) -> None:
+    callback = Callback("q1", callback_backend, MagicMock())
+    ch = mock.Mock(spec=BlockingChannel, is_open=channel_open)
+    method = mock.Mock(spec=Basic.Deliver, delivery_tag=123, exchange="source", routing_key="some.key")
+    body = Event(value_type="absolute", payload={}).marshall()
+    properties = BasicProperties(headers={"x-retries": 5})
+
+    if channel_open:
+        ch.basic_publish.side_effect = pika.exceptions.UnroutableError([])
+        callback._handle_exhausted(ch, method, properties, body)
+        ch.basic_nack.assert_called_once_with(123, requeue=True)
+    else:
+        ch.queue_bind.side_effect = pika.exceptions.ChannelClosedByBroker(403, "ACCESS_REFUSED")
+        with pytest.raises(pika.exceptions.ChannelClosedByBroker):
+            callback._handle_exhausted(ch, method, properties, body)
+        ch.basic_nack.assert_not_called()
+
+    ch.basic_ack.assert_not_called()
 
 
 def test_callback_noack(caplog) -> None:
@@ -324,22 +396,23 @@ def test_backend__handle_retry(configure_server) -> None:
         assert ch.basic_ack.called
 
 
-def test_backend_max_retry(caplog, configure_server) -> None:
-    backend = get_backend()
-    backend.connect()
-    message = Event(value_type="absolute", payload={})
-    backend._basic_publish = MagicMock()
+@pytest.mark.parametrize(("limit", "retries", "exhausted"), [(0, 0, True), (2, 1, False), (2, 3, True)])
+def test_callback_retry_limit(
+    stream_config, callback_backend: RabbitMQBackend, limit: int, retries: int, exhausted: bool
+) -> None:
+    stream_config.CALLBACK_RETRY_COUNT = limit
+    callback = Callback("q1", callback_backend, MagicMock(side_effect=CallbackRetry))
+    body = Event(value_type="absolute", payload={}).marshall()
     ch = mock.Mock(spec=BlockingChannel)
-    ch.basic_ack = MagicMock()
-    ch.queue_bind = MagicMock()
     method = mock.Mock(spec=Basic.Deliver)
-    method.delivery_tag = 123  # must exist!
 
-    with caplog.at_level(logging.ERROR):
-        backend._handle_retry(message, ch, method, MAX_RETRIES + 1)
-        assert "Dropping message" in caplog.text
+    with (
+        mock.patch.object(callback_backend, "_handle_retry") as retry,
+        mock.patch.object(callback, "_handle_exhausted") as save,
+    ):
+        callback(ch, method, BasicProperties(headers={"x-retries": retries}), body)
 
-    assert not backend._basic_publish.called
+    assert (retry.called, save.called) == (not exhausted, exhausted)
 
 
 def _retry_fixtures(configure_server):
