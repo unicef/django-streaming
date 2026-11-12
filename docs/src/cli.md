@@ -56,6 +56,8 @@ stream listen --queues invoices --pretty
 
 This command will listen to the queue with the alias `invoices` and pretty-print the payload.
 
+For callback retry and exhausted-message handling, see [RabbitMQ callback retries](usage.md#rabbitmq-callback-retries).
+
 ## `send`
 
 The `send` command sends a message to a RabbitMQ exchange with a specific routing key.
