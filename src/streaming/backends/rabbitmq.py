@@ -3,6 +3,7 @@ import socket
 import time
 from collections import defaultdict
 from contextlib import suppress
+from copy import copy
 from typing import TYPE_CHECKING
 
 import pika.channel
@@ -32,8 +33,6 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-MAX_RETRIES = 5
-
 
 class Callback:
     def __init__(self, queue_name: str, backend: "RabbitMQBackend", user_callback: "UserCallback") -> None:
@@ -50,13 +49,50 @@ class Callback:
         except CallbackSkipAck as e:
             logger.error(f"StreamingCallbackSkipAckException: {e}", exc_info=e)
         except CallbackRetry:
-            evt: Event = Event.unmarshal(body)
             retries = int(properties.headers.get("x-retries", 0))  # type: ignore[union-attr]
-            self.backend._handle_retry(evt, ch, method, retries)
+            if retries >= CONFIG.CALLBACK_RETRY_COUNT:
+                self._handle_exhausted(ch, method, properties, body)
+            else:
+                self.backend._handle_retry(Event.unmarshal(body), ch, method, retries)
         except CallbackError as e:
             logger.error(f"Callback failure: {e}", exc_info=e)
         except Exception as e:
             logger.exception(f"Unexpected exception occurred: {e}", exc_info=e)
+
+    def _handle_exhausted(
+        self, ch: "BlockingChannel", method: "Basic.Deliver", properties: "BasicProperties", body: bytes
+    ) -> None:
+        """Save an exhausted message before acknowledging the original delivery."""
+        message_id = Event.unmarshal(body).id
+        queue = f"{self.backend.get_real_queue_name(self.queue_name)}_exhausted"
+        exchange = self.backend.retry_exchange
+        try:
+            ch.queue_declare(queue=queue, durable=True)
+            ch.queue_bind(queue=queue, exchange=exchange, routing_key=queue)
+
+            headers = dict(properties.headers or {})
+            for key in ("CC", "BCC"):
+                if key in headers:
+                    headers[f"x-original-{key}"] = headers.pop(key)
+            headers.update({"x-original-exchange": method.exchange, "x-original-routing-key": method.routing_key})
+            if properties.user_id is not None:
+                headers["x-original-user-id"] = properties.user_id
+
+            saved = copy(properties)
+            saved.headers = headers
+            saved.delivery_mode = pika.spec.PERSISTENT_DELIVERY_MODE
+            saved.expiration = None
+            saved.user_id = None
+            ch.basic_publish(exchange=exchange, routing_key=queue, body=body, properties=saved, mandatory=True)
+        except Exception:
+            logger.exception("Failed to save exhausted message %s to %s", message_id, queue)
+            if not ch.is_open:
+                raise
+            ch.basic_nack(method.delivery_tag, requeue=True)  # type: ignore[arg-type]
+            return
+
+        ch.basic_ack(method.delivery_tag)  # type: ignore[arg-type]
+        logger.error("Saved exhausted message %s to %s", message_id, queue)
 
 
 class RabbitMQBackend(BaseBackend):
@@ -134,6 +170,8 @@ class RabbitMQBackend(BaseBackend):
                     )
                 )
                 self.channel = self._connection.channel()
+                # Publisher confirms: basic_publish raises if the broker nacks or (with mandatory) cannot route
+                self.channel.confirm_delivery()
                 return
             except (
                 pika.exceptions.AuthenticationError,
@@ -175,12 +213,18 @@ class RabbitMQBackend(BaseBackend):
     # Listener
 
     def _basic_publish(
-        self, message: "Event", routing_key: str, retry_count: int = 0, exchange: str | None = None
+        self,
+        message: "Event",
+        routing_key: str,
+        retry_count: int = 0,
+        exchange: str | None = None,
+        mandatory: bool = False,
     ) -> None:
         self.check_channel()
         self.channel.basic_publish(  # type: ignore[union-attr]
             exchange=exchange or self.exchange,
             routing_key=routing_key,
+            mandatory=mandatory,
             body=message.marshall(),
             properties=pika.BasicProperties(
                 delivery_mode=pika.spec.PERSISTENT_DELIVERY_MODE,
@@ -190,15 +234,14 @@ class RabbitMQBackend(BaseBackend):
         )
 
     def _handle_retry(self, message: "Event", ch: "BlockingChannel", method: "Basic.Deliver", retries: int) -> None:
-        ch.basic_ack(method.delivery_tag)  # type: ignore[arg-type]
-        if retries < MAX_RETRIES:
-            delay = 2000 * (2**retries)  # ms (exponential backoff)
-            delay_queue = f"{self.exchange}_retry_{method.routing_key}_{delay}ms"
-            logger.debug(
-                f"Retrying message {message.id} ({retries + 1}/{MAX_RETRIES}) "
-                f"with routing key '{method.routing_key}' in {delay / 1000}s"
-            )
-
+        """Publish a delayed retry before acknowledging the original message."""
+        delay = 2000 * (2**retries)  # ms (exponential backoff)
+        delay_queue = f"{self.exchange}_retry_{method.routing_key}_{delay}ms"
+        logger.debug(
+            f"Retrying message {message.id} ({retries + 1}/{CONFIG.CALLBACK_RETRY_COUNT}) "
+            f"with routing key '{method.routing_key}' in {delay / 1000}s"
+        )
+        try:
             # Declare a delay queue with TTL
             ch.queue_declare(
                 delay_queue,
@@ -210,9 +253,23 @@ class RabbitMQBackend(BaseBackend):
                 },
             )
             ch.queue_bind(delay_queue, self.retry_exchange, routing_key=delay_queue)
-            self._basic_publish(message, routing_key=delay_queue, retry_count=retries + 1, exchange=self.retry_exchange)
-        else:
-            logger.error(f"Dropping message {message.id} after {MAX_RETRIES} retries")
+            self._basic_publish(
+                message,
+                routing_key=delay_queue,
+                retry_count=retries + 1,
+                exchange=self.retry_exchange,
+                mandatory=True,
+            )
+        except Exception as e:
+            logger.exception(f"Failed to schedule retry for message {message.id}; leaving it unacknowledged: {e}")
+            if ch.is_open:
+                # Channel still usable: return the message to the queue instead of leaving it stuck
+                ch.basic_nack(method.delivery_tag, requeue=True)  # type: ignore[arg-type]
+            else:
+                # Channel closed: broker redelivers unacked messages automatically
+                raise
+            return
+        ch.basic_ack(method.delivery_tag)  # type: ignore[arg-type]
 
     def listen(self, callback: "UserCallback", queues: list[str] | None = None, ack: bool = True) -> None:
         if self.channel is None:
