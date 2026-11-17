@@ -134,8 +134,6 @@ class RabbitMQBackend(BaseBackend):
                     )
                 )
                 self.channel = self._connection.channel()
-                # Publisher confirms: basic_publish raises if the broker nacks or (with mandatory) cannot route
-                self.channel.confirm_delivery()
                 return
             except (
                 pika.exceptions.AuthenticationError,
@@ -249,6 +247,9 @@ class RabbitMQBackend(BaseBackend):
         if self.channel is None:
             self.connect()
         self.check_channel()
+        # Publisher confirms are enabled only for the listener's channel (needed so retry publications are
+        # confirmed before the original message is acked); regular publish() is not slowed down by them.
+        self.channel.confirm_delivery()  # type: ignore[union-attr]
         configured_queues = CONFIG.QUEUES
         if not configured_queues:
             logger.warning("No queues configured in settings.STREAMING['QUEUES']")
