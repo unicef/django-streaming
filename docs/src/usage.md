@@ -1,5 +1,3 @@
-from streaming.utils import make_event
-
 # Usage
 
 `django-streaming` provides a flexible framework for streaming data from your Django applications to various backends.
@@ -57,4 +55,35 @@ When using the `ThreadedChangeManager`, messages are queued and processed in a b
 -   **Console Backend:** For printing messages to the console (useful for debugging).
 -   **RabbitMQ Backend:** For publishing messages to a RabbitMQ message broker.
 
-Refer to the specific backend documentation for detailed configuration and usage instructions.
+See [Configuration](configuration.md) for backend settings and the [CLI guide](cli.md) for listener commands.
+
+
+## RabbitMQ callback retries
+
+A RabbitMQ listener callback can raise `CallbackRetry` to request another attempt. Retries use exponential delays
+(2, 4, 8, 16, and 32 seconds by default). The number of additional attempts is controlled by
+[`CALLBACK_RETRY_COUNT`](configuration.md#rabbitmq-specific-settings) (default: `5`); `0` sends the first failed
+attempt directly to the exhausted queue. See [`stream listen`](cli.md#listen) for running a listener.
+
+```text
+Callback
+  |-- success ------------------> ACK original
+  `-- CallbackRetry
+        |-- retries remain -----> delayed retry
+        `-- retries exhausted --> exhausted queue
+                                    |-- confirmed -> ACK original
+                                    `-- failed ----> redelivery
+```
+
+When retries are exhausted, the received message body and relevant AMQP metadata are published to a durable
+`<client_name>:<queue_alias>_exhausted` queue, created on demand and bound to the existing retry exchange. The copy
+is persistent and has no per-message TTL. The original delivery is acknowledged only after the broker confirms the
+new copy; if publication fails, the original remains available for redelivery. Delivery may be duplicated if the
+confirmation succeeds but the original acknowledgement is lost.
+
+Exhausted messages are not replayed automatically and must be reviewed or reprocessed separately.
+
+!!! note "RabbitMQ deployment"
+    The listener's RabbitMQ user needs permission to create and bind exhausted queues and publish through the retry
+    exchange in its vhost. Ensure broker policies do not expire or discard these messages. Monitoring exhausted queue
+    sizes is recommended.

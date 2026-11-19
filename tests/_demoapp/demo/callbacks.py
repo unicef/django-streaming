@@ -4,7 +4,7 @@ import typing
 
 from colorama import Fore
 
-from streaming.backends.rabbitmq import MAX_RETRIES
+from streaming.config import CONFIG
 from streaming.event import Event
 from streaming.exceptions import CallbackRetry, CallbackSkipAck
 
@@ -35,7 +35,7 @@ def retry_delay(
     queue_name: str, ch: "BlockingChannel", method: "Basic.Deliver", properties: "BasicProperties", body: bytes
 ) -> bool:
     attempts = int(properties.headers.get("x-retries", 0))  # type: ignore[union-attr]
-    if attempts < MAX_RETRIES:
+    if attempts < CONFIG.CALLBACK_RETRY_COUNT:
         raise CallbackRetry(f"Attempt {attempts}")
     message: Event = Event.unmarshal(body)
     ack = f"{Fore.GREEN}ACK{Fore.RESET}"

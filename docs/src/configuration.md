@@ -17,7 +17,7 @@ The `django-streaming` library can be configured via the `STREAMING` dictionary 
     The delay in seconds between retry attempts when connecting to the message broker.
 
 *   **`MESSAGE_TTL`** (int, default: `172800` seconds, i.e. 2 days):
-    The maximum time a message can live in a queue before being discarded. The value is in seconds.
+    Per-message expiration in seconds for RabbitMQ publications, including delayed retries. Exhausted messages are published without this TTL.
 
 *   **`MANAGER_CLASS`** (string, default: `"streaming.manager.ChangeManager"`):
     The Python path to the `ChangeManager` class to be used. You can switch to the threaded manager by setting this to `"streaming.manager.ThreadedChangeManager"`.
@@ -52,6 +52,9 @@ The `django-streaming` library can be configured via the `STREAMING` dictionary 
 *   **`CLIENT_NAME`** (string, default: `""`):
     A label for the RabbitMQ connection, visible in the RabbitMQ management interface.
 
+*   **`CALLBACK_RETRY_COUNT`** (int, default: `5`):
+    Additional attempts after a listener callback raises `CallbackRetry`; `0` disables retries. This is independent of connection `RETRY_COUNT` and `RETRY_DELAY`. See [RabbitMQ callback retries](usage.md#rabbitmq-callback-retries) for the delivery flow.
+
 ## Full Configuration Example
 
 ```python
@@ -67,6 +70,7 @@ The `django-streaming` library can be configured via the `STREAMING` dictionary 
         "CLIENT_NAME": "my_app_name",
         "RETRY_COUNT": 3,
         "RETRY_DELAY": 1,
+        "CALLBACK_RETRY_COUNT": 5,
         "MESSAGE_TTL": 60 * 60 * 24 * 2,  # 2 days
         "MANAGER_CLASS": "streaming.manager.ChangeManager",
         "LISTEN_CALLBACK": "streaming.callbacks.default_callback",
