@@ -1,4 +1,4 @@
-## 0.8.0
+## 0.9.0
 
 - Publisher confirms are now enabled on the **listener channel** only, so a retry publication is
   confirmed by the broker before the original message is acknowledged. Regular `publish()` calls
@@ -8,15 +8,28 @@
 - The original message is acknowledged **only after** a retry has been successfully declared,
   published and confirmed. On failure it is nacked with `requeue=True` (or left unacked and
   redelivered by the broker if the channel is closed), preventing message loss.
-- Messages that exceed `MAX_RETRIES` are now explicitly dropped with an error log.
-- Added regression tests covering the retry acknowledgement behavior.
+- Messages that exhaust their retries are now preserved in a durable `<queue>_exhausted` queue
+  instead of being dropped: the original body and AMQP metadata are republished to the retry
+  exchange, and the original delivery is acknowledged only after the copy is confirmed. If saving
+  fails, the original is nacked with `requeue=True` (or left unacked) for redelivery.
+- The maximum number of callback retries is now configurable via the `CALLBACK_RETRY_COUNT` setting
+  (default: `5`; `0` sends the first failed attempt straight to the exhausted queue), replacing the
+  hard-coded `MAX_RETRIES` constant. Exhausted messages are published without a per-message TTL.
+- Documented the callback retry and exhausted-message flow, and added a `docs` tox environment for
+  building the documentation.
+- Added regression tests covering the retry acknowledgement and exhausted-message behavior.
 
 
-## 0.7.2
-- `ChangeManager.register()` accepts an optional `fields` argument to control which model fields
-  are included in the event payload.
-- Added `get_serializable_fields()`, which excludes binary, file and image fields by default and
-  prevents serialization errors on non-serializable field types.
+## 0.8.0
+
+- **New Features:** Allow specifying fields to be serialized in the event payload. It is now
+  possible to specify which fields of a model should be included in the event payload, providing
+  more flexibility and control over the data that is streamed. `ChangeManager.register()` accepts an
+  optional `fields` argument, and `get_serializable_fields()` excludes binary, file and image fields
+  by default to prevent serialization errors.
+- **Refactor:** Decoupled the routing key from the event. The routing key is no longer tied to the
+  event, and the default routing key generation has been improved, making event routing more
+  flexible and easier to configure.
 
 ## 0.7.1
 - `make_event()` now accepts `value_type`, `key` and `message_id` as optional keyword arguments;
